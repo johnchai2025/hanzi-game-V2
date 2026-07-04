@@ -82,6 +82,20 @@ export function GameScreen({
 
   const handlePairEliminated = useCallback(({ word, chars }: { word: string; chars: WordPair }) => {
     speak(word);
+
+    // 该词语已经生成过图片（无论是在哪一关获得的），直接复用，不再调用生图 API
+    const cached = savedWordCards.find(c => c.word === word && c.imageUrl);
+    if (cached) {
+      const card: WordCard = {
+        ...cached,
+        id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        levelId: level.id,
+        generatedAt: Date.now(),
+      };
+      setRewardCard({ status: 'ready', card });
+      return;
+    }
+
     const character = getCharacter?.() ?? { animal: '小兔子', emoji: '🐰', name: '小兔' };
     const scene = getRandomScene?.() ?? '森林';
     const placeholderCard: WordCard = {
@@ -103,7 +117,7 @@ export function GameScreen({
         return { status: 'ready', card, error };
       });
     });
-  }, [generateCardPreview, getCharacter, getRandomScene, level.id, speak]);
+  }, [savedWordCards, generateCardPreview, getCharacter, getRandomScene, level.id, speak]);
 
   const gameOptions = useMemo(() => ({
     rows,

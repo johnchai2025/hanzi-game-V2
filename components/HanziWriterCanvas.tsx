@@ -27,6 +27,7 @@ export function HanziWriterCanvas({
   useEffect(() => {
     if (!shouldStart) return;
     let cancelled = false;
+    let cueTimer: ReturnType<typeof setTimeout> | undefined;
 
     async function init() {
       const HanziWriter = (await import('hanzi-writer')).default;
@@ -44,6 +45,7 @@ export function HanziWriterCanvas({
         drawingColor: '#8a5628',
         highlightColor: '#f59e0b',
         strokeAnimationSpeed: 1,
+        strokeHighlightSpeed: 1,
         delayBetweenStrokes: 300,
         showOutline: true,
         showCharacter: false,
@@ -58,15 +60,41 @@ export function HanziWriterCanvas({
 
       writerRef.current = writer;
 
+      // Proactively flashes the upcoming stroke in highlightColor so kids know
+      // where to start, instead of only hinting reactively after a miss.
+      const cueStroke = (strokeIndex: number, delayMs = 0) => {
+        const fire = () => {
+          if (cancelled) return;
+          writer.highlightStroke(strokeIndex);
+        };
+        if (delayMs > 0) {
+          cueTimer = setTimeout(fire, delayMs);
+        } else {
+          fire();
+        }
+      };
+
       writer.animateCharacter({
         onComplete: () => {
           if (cancelled) return;
           onPhaseOneComplete?.();
           writer.quiz({
+            // showOutline stays true through the quiz (it's never hidden below),
+            // which makes hanzi-writer itself grade strokes more strictly
+            // (it halves its own distance threshold whenever the outline is
+            // visible) — raise leniency to compensate for kids' shakier strokes.
+            leniency: 1.6,
+            acceptBackwardsStrokes: true,
+            showHintAfterMisses: 1,
+            markStrokeCorrectAfterMisses: 3,
+            onCorrectStroke: (strokeData) => {
+              if (cancelled) return;
+              if (strokeData.strokesRemaining > 0) cueStroke(strokeData.strokeNum + 1);
+            },
             onComplete: () => {
               if (!cancelled) onQuizComplete?.();
             },
-          });
+          }).then(() => cueStroke(0, 350));
         },
       });
     }
@@ -75,6 +103,7 @@ export function HanziWriterCanvas({
 
     return () => {
       cancelled = true;
+      clearTimeout(cueTimer);
     };
   // char/size/strokeColor are stable after mount; only re-run when shouldStart flips
   // eslint-disable-next-line react-hooks/exhaustive-deps

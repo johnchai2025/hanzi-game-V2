@@ -1,18 +1,34 @@
-import { ProxyAgent, fetch as undiciFetch } from 'undici';
+const DASHSCOPE_API_KEY = process.env.DASHSCOPE_API_KEY || '';
+const DASHSCOPE_IMAGE_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation';
+const WAN_MODEL = 'wan2.6-t2i';
+const NEGATIVE_PROMPT = '文字，汉字，拼音，字幕，标牌，水印，低分辨率，低画质，肢体畸形，构图混乱';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image';
+interface DashScopeImageResponse {
+  output?: {
+    choices?: Array<{ message?: { content?: Array<{ image?: string; text?: string }> } }>;
+  };
+}
 
-const PROXY_URL = process.env.HTTPS_PROXY || process.env.https_proxy || '';
-const proxyDispatcher = PROXY_URL ? new ProxyAgent(PROXY_URL) : undefined;
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-// 本地开发走代理（HTTPS_PROXY），Vercel 生产直连
-async function proxiedFetch(url: string, options: Record<string, unknown>) {
-  if (proxyDispatcher) {
-    return undiciFetch(url, { ...options, dispatcher: proxyDispatcher } as Parameters<typeof undiciFetch>[1]);
+// DashScope 返回的图片 URL 仅 24 小时有效，必须立即下载转存，不能原样返回/持久化
+async function downloadAsDataUrl(imgUrl: string): Promise<string> {
+  const MAX_ATTEMPTS = 3;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const imgRes = await fetch(imgUrl);
+      if (!imgRes.ok) throw new Error(`download failed: HTTP ${imgRes.status}`);
+      const buf = Buffer.from(await imgRes.arrayBuffer());
+      return `data:image/png;base64,${buf.toString('base64')}`;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < MAX_ATTEMPTS) await sleep(500 * attempt);
+    }
   }
-  return fetch(url, options as RequestInit);
+  throw new Error(`图片已生成但下载失败（重试 ${MAX_ATTEMPTS} 次）: ${String(lastErr)}`);
 }
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || '';
@@ -44,37 +60,37 @@ export async function generateWordCardImage(
   animal: string,
   scene: string
 ): Promise<string> {
-  if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not configured');
+  if (!DASHSCOPE_API_KEY) throw new Error('DASHSCOPE_API_KEY is not configured');
 
   const prompt = `绘本插画风格，一只可爱的${animal}在${scene}里，画面温馨地表现"${word}"这个中文词语的意思。色彩鲜艳明亮，卡通可爱，适合6岁小朋友欣赏，构图简洁，画面中不要出现任何文字、汉字、拼音、字幕或标牌。`;
 
-  const res = await proxiedFetch(
-    `${GEMINI_BASE}/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
-      }),
-    }
-  );
+  const res = await fetch(DASHSCOPE_IMAGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${DASHSCOPE_API_KEY}` },
+    body: JSON.stringify({
+      model: WAN_MODEL,
+      input: { messages: [{ role: 'user', content: [{ text: prompt }] }] },
+      parameters: {
+        prompt_extend: true,
+        watermark: false,
+        n: 1,
+        negative_prompt: NEGATIVE_PROMPT,
+        size: '1280*1280',
+      },
+    }),
+  });
 
+  const data: DashScopeImageResponse = await res.json();
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${text.slice(0, 300)}`);
+    throw new Error(`wan2.6-t2i API error ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);
   }
 
-  const data = await res.json();
-  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> =
-    data?.candidates?.[0]?.content?.parts ?? [];
-  const imagePart = parts.find((p) => p.inlineData);
-  if (!imagePart?.inlineData) {
-    throw new Error(`No image in Gemini response: ${JSON.stringify(data).slice(0, 200)}`);
+  const imgUrl = data.output?.choices?.[0]?.message?.content?.find((c) => c.image)?.image;
+  if (!imgUrl) {
+    throw new Error(`wan2.6-t2i returned no image: ${JSON.stringify(data).slice(0, 300)}`);
   }
 
-  const { mimeType, data: b64 } = imagePart.inlineData;
-  return `data:${mimeType};base64,${b64}`;
+  return downloadAsDataUrl(imgUrl);
 }
 
 const STORY_TYPES = [

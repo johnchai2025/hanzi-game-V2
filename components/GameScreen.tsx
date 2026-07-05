@@ -80,6 +80,21 @@ export function GameScreen({
     getRandomScene ?? (() => '森林')
   );
 
+  // 生成成功后自动保存到词卡库，不需要用户手动点保存
+  const persistCard = useCallback((card: WordCard) => {
+    if (!card.imageUrl) return;
+    const existingCard = savedWordCards.find(
+      c => c.levelId === card.levelId && c.word === card.word
+    );
+    const willChangeLibrary = !existingCard || !existingCard.imageUrl;
+    if (!willChangeLibrary) return;
+
+    onAddWordCard?.(card);
+    setSavedCardCount(prev => prev + 1);
+    setShowNewCardToast(true);
+    setTimeout(() => setShowNewCardToast(false), 3000);
+  }, [savedWordCards, onAddWordCard]);
+
   const handlePairEliminated = useCallback(({ word, chars }: { word: string; chars: WordPair }) => {
     speak(word);
 
@@ -93,6 +108,7 @@ export function GameScreen({
         generatedAt: Date.now(),
       };
       setRewardCard({ status: 'ready', card });
+      persistCard(card);
       return;
     }
 
@@ -116,8 +132,9 @@ export function GameScreen({
         if (!current || current.card.word !== word || current.card.levelId !== level.id) return current;
         return { status: 'ready', card, error };
       });
+      if (card.imageUrl) persistCard(card);
     });
-  }, [savedWordCards, generateCardPreview, getCharacter, getRandomScene, level.id, speak]);
+  }, [savedWordCards, generateCardPreview, getCharacter, getRandomScene, level.id, speak, persistCard]);
 
   const gameOptions = useMemo(() => ({
     rows,
@@ -164,23 +181,7 @@ export function GameScreen({
     reshuffle();
   };
 
-  const handleSaveRewardCard = () => {
-    if (!rewardCard) return;
-    const existingCard = savedWordCards.find(
-      card => card.levelId === rewardCard.card.levelId && card.word === rewardCard.card.word
-    );
-    const willChangeLibrary = !existingCard || (!existingCard.imageUrl && Boolean(rewardCard.card.imageUrl));
-
-    onAddWordCard?.(rewardCard.card);
-    if (willChangeLibrary) {
-      setSavedCardCount(prev => prev + 1);
-      setShowNewCardToast(true);
-      setTimeout(() => setShowNewCardToast(false), 3000);
-    }
-    setRewardCard(null);
-  };
-
-  const handleSkipRewardCard = () => {
+  const handleCloseRewardCard = () => {
     setRewardCard(null);
   };
 
@@ -193,6 +194,7 @@ export function GameScreen({
         if (!current || current.card.word !== word || current.card.levelId !== levelId) return current;
         return { status: 'ready', card, error };
       });
+      if (card.imageUrl) persistCard(card);
     });
   };
 
@@ -266,8 +268,7 @@ export function GameScreen({
           card={rewardCard.card}
           status={rewardCard.status}
           error={rewardCard.error}
-          onSave={handleSaveRewardCard}
-          onSkip={handleSkipRewardCard}
+          onClose={handleCloseRewardCard}
           onRetry={handleRetryRewardCard}
         />
       )}

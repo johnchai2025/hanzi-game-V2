@@ -8,12 +8,11 @@ interface Props {
   card: WordCard;
   status: 'generating' | 'ready';
   error?: string;
-  onSave: () => void;
-  onSkip: () => void;
+  onClose: () => void;
   onRetry?: () => void;
 }
 
-export function RewardCardModal({ card, status, error, onSave, onSkip, onRetry }: Props) {
+export function RewardCardModal({ card, status, error, onClose, onRetry }: Props) {
   const isGenerating = status === 'generating';
   const hasImage = Boolean(card.imageUrl);
 
@@ -27,7 +26,7 @@ export function RewardCardModal({ card, status, error, onSave, onSkip, onRetry }
   return (
     <div className="modal-overlay">
       <div className={`reward-card-modal${showPractice ? ' practice' : ''}`}>
-        <button className="reward-card-close" onClick={onSkip}>×</button>
+        <button className="reward-card-close" onClick={onClose}>×</button>
 
         {showPractice ? (
           <div className="stroke-practice-area">
@@ -65,23 +64,20 @@ export function RewardCardModal({ card, status, error, onSave, onSkip, onRetry }
                 <div className="reward-card-placeholder">
                   <span className="reward-card-placeholder-word">{card.word}</span>
                   <span className="reward-card-placeholder-hint">
-                    {error ? `生成失败：${error}` : '图片暂时没生成，也可以保存文字词卡'}
+                    {error ? `生成失败：${error}` : '图片暂时没有生成'}
                   </span>
                 </div>
               )}
             </div>
             <div className="reward-card-actions">
-              <button className="btn btn-primary" disabled={isGenerating} onClick={onSave}>
-                保存到词卡库
-              </button>
-              <button className="btn btn-restart" onClick={onSkip}>
-                这次不保存
-              </button>
               {!isGenerating && !hasImage && onRetry && (
                 <button className="btn btn-outline" onClick={onRetry}>
                   再试一次生成图片
                 </button>
               )}
+              <button className="btn btn-primary" onClick={onClose}>
+                太棒了！
+              </button>
             </div>
           </>
         )}

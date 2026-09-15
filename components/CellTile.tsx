@@ -56,6 +56,7 @@ export function CellTile({ cell, onClick, isFlipped = false, onFlip }: Props) {
   return (
     <div
       className={className}
+      data-cell-id={cell.id}
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       onPointerUp={cancelLongPress}

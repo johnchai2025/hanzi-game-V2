@@ -54,14 +54,22 @@ export function GameScreen({
   getCharacter,
   getRandomScene,
 }: Props) {
+  // 词对数量仍按原来的方式从关卡棋盘尺寸推导（不改 curriculum/自定义关卡数据）
   const rows = customLevel ? 4 : level.boardRows ?? 4;
   const cols = customLevel ? 4 : level.boardCols ?? 4;
   const pairCount = Math.floor((rows * cols) / 2);
 
-  const activePairs = useMemo<WordPair[]>(() => {
-    if (customLevel) return pickPairsForGame(customLevel.pairs, pairCount);
-    return pickPairsForGame(level.pairs, pairCount);
-  }, [level, customLevel, pairCount]);
+  // 双栏布局：左栏放每个词对的第一个字，右栏放第二个字，固定两列、
+  // 行数等于本局词对数（跟原来的 rows*cols 网格尺寸解耦，只用于渲染整形）
+  const boardRows = pairCount;
+  const boardCols = 2;
+
+  // 用 useState 懒初始化而不是 useMemo：保证本局抽中的词对在整局游戏期间
+  // 绝对不会重新抽样（useMemo 只要依赖项引用变化就可能重算，一旦重算就会
+  // 抽出不同的随机词对，但棋盘还是旧的，会导致"明明是词却消不掉"）
+  const [activePairs] = useState<WordPair[]>(() =>
+    customLevel ? pickPairsForGame(customLevel.pairs, pairCount) : pickPairsForGame(level.pairs, pairCount)
+  );
 
   const completedRef = useRef(false);
   const [showNewCardToast, setShowNewCardToast] = useState(false);
@@ -137,10 +145,10 @@ export function GameScreen({
   }, [savedWordCards, generateCardPreview, getCharacter, getRandomScene, level.id, speak, persistCard]);
 
   const gameOptions = useMemo(() => ({
-    rows,
-    cols,
+    rows: boardRows,
+    cols: boardCols,
     onPairEliminated: handlePairEliminated,
-  }), [cols, handlePairEliminated, rows]);
+  }), [boardCols, boardRows, handlePairEliminated]);
 
   const { cells, eliminatedCount, isComplete, feedback, milestone, isDeadlock, handleCellClick, showHint, restart, reshuffle } =
     useGame(level, activePairs, gameOptions);

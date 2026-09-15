@@ -1,6 +1,6 @@
 // 图标 / 吉祥物静态资源映射。
 // 设计稿用 window.* 全局共享，这里改为可 import 的纯模块。
-// 注意：真实课程数据（grade1_semester2.json）的关卡标题与定制图标主题名不一致，
+// 注意：真实课程数据（grade2_semester1.json）的关卡标题与定制图标主题名不一致，
 // 因此关卡图标按「索引循环」分配（见 levelIconByIndex），而非按标题精确匹配。
 
 // 动物选择图标：键 = AnimalCharacter.animal（见 types.ts AVAILABLE_ANIMALS）

@@ -26,24 +26,19 @@ interface UseGameOptions {
 
 /**
  * 将词对列表转换为棋盘初始状态。
- * 单字配词模式：每个词语拆成两个单字格（pairId 相同），
- * 玩家点击同一词对的两个汉字即可消除。
+ * 双栏配词模式：每个词对的第一个字只进左栏（第0列），第二个字只进右栏（第1列），
+ * 两栏各自独立打乱顺序（不能让行号暗示正确配对）。
+ * 玩家点左栏一个字、右栏一个字，两字能组成有效词语即可消除。
  */
 function initBoard(pairs: WordPair[], rows: number, cols: number): Cell[][] {
-  // 每个 pair 产生两个单字格（如 ["花","生"] -> "花"、"生"）
-  const allCells = pairs.flatMap((pair, pairId) => {
-    const word = pair[0] + pair[1];
-    return [
-      { char: pair[0], word, pairId },
-      { char: pair[1], word, pairId },
-    ];
-  });
-
-  const shuffled = shuffleArray(allCells);
+  const leftEntries = pairs.map((pair, pairId) => ({ char: pair[0], word: pair[0] + pair[1], pairId }));
+  const rightEntries = pairs.map((pair, pairId) => ({ char: pair[1], word: pair[0] + pair[1], pairId }));
+  const shuffledLeft = shuffleArray(leftEntries);
+  const shuffledRight = shuffleArray(rightEntries);
 
   return Array.from({ length: rows }, (_, r) =>
     Array.from({ length: cols }, (_, c) => {
-      const cellData = shuffled[r * cols + c];
+      const cellData = c === 0 ? shuffledLeft[r] : c === 1 ? shuffledRight[r] : undefined;
       return {
         id: `cell-${r}-${c}`,
         char: cellData?.char ?? '',
@@ -104,55 +99,38 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
   }, [activePairs, rows, cols]);
 
   // 重新打乱棋盘（不重置进度）
+  // 左右栏各自独立收集未消除的格子、各自独立打乱，保持"第一个字在左栏、
+  // 第二个字在右栏"的栏位归属不变（不能重排后把左栏的字混到右栏）
   const reshuffle = useCallback(() => {
-    const remainingCells: { char: string; word: string; pairId: number }[] = [];
+    const remainingByCol: { char: string; word: string; pairId: number }[][] =
+      Array.from({ length: cols }, () => []);
     cells.forEach(row =>
-      row.forEach(cell => {
+      row.forEach((cell, c) => {
         if (!cell.isEmpty) {
-          remainingCells.push({ char: cell.char, word: cell.word, pairId: cell.pairId });
+          remainingByCol[c].push({ char: cell.char, word: cell.word, pairId: cell.pairId });
         }
       })
     );
+    const shuffledByCol = remainingByCol.map(colCells => shuffleArray(colCells));
 
-    const shuffled = shuffleArray(remainingCells);
-
-    setCells(() => {
-      const newCells: Cell[][] = Array.from({ length: rows }, (_, r) =>
-        Array.from({ length: cols }, (_, c) => ({
-          id: `cell-${r}-${c}`,
-          char: '',
-          word: '',
-          pairId: 0,
-          isEmpty: true,
-          isSelected: false,
-          isHinted: false,
-          isEliminating: false,
-          isShaking: false,
-        }))
-      );
-
-      let idx = 0;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (idx < shuffled.length) {
-            const cellData = shuffled[idx];
-            newCells[r][c] = {
-              id: `cell-${r}-${c}`,
-              char: cellData.char,
-              word: cellData.word,
-              pairId: cellData.pairId,
-              isEmpty: false,
-              isSelected: false,
-              isHinted: false,
-              isEliminating: false,
-              isShaking: false,
-            };
-            idx++;
-          }
-        }
-      }
-      return newCells;
-    });
+    setCells(() =>
+      Array.from({ length: rows }, (_, r) =>
+        Array.from({ length: cols }, (_, c) => {
+          const cellData = shuffledByCol[c][r];
+          return {
+            id: `cell-${r}-${c}`,
+            char: cellData?.char ?? '',
+            word: cellData?.word ?? '',
+            pairId: cellData?.pairId ?? -1,
+            isEmpty: !cellData,
+            isSelected: false,
+            isHinted: false,
+            isEliminating: false,
+            isShaking: false,
+          };
+        })
+      )
+    );
 
     setSelected(null);
     setIsDeadlock(false);
@@ -281,15 +259,22 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
       }, 300);
 
     } else {
-      // 不是同一词对 — 移动选中到新格子
+      // 不是有效词语 — 短暂震动提示两个格子，随后清空选中
+      // （不能把这次失败的点击悄悄当成"新的第一次选择"，否则玩家分不清是选中了新格子
+      //  还是刚才那次点击失败了）
       setCells(prev => {
-        const next = prev.map(r => r.map(c => ({ ...c, isSelected: false })));
-        next[row][col].isSelected = true;
+        const next = prev.map(r => r.map(c => ({ ...c })));
+        next[selected.row][selected.col].isShaking = true;
+        next[row][col].isShaking = true;
         return next;
       });
-      setSelected({ row, col });
+      showFeedback('这两个字拼不成词，再试试～');
+      setTimeout(() => {
+        setCells(prev => prev.map(r => r.map(c => ({ ...c, isSelected: false, isShaking: false }))));
+        setSelected(null);
+      }, 400);
     }
-  }, [cells, selected, activePairs, options]);
+  }, [cells, selected, activePairs, options, showFeedback]);
 
   return {
     cells,

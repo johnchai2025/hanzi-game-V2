@@ -7,7 +7,12 @@ import { saveImage, loadAllImages, deleteImage } from '../lib/imageStore';
 const SAVE_KEY = 'hanzi-match-save';
 const CUSTOM_KEY = 'hanzi-match-custom-levels';
 
-const defaultSave: SaveData = { unlockedLevels: ['g1s2u1'], completedLevels: [], wordCards: [], stories: [] };
+// 当前课程的第一关 ID，永远默认解锁。
+// 换课程（如一年级下 → 二年级上）时必须跟着改，否则老存档里全是旧课程的关卡 ID，
+// 新课程一关都不会解锁，游戏会整个锁死。
+const FIRST_LEVEL_ID = 'g2s1u1';
+
+const defaultSave: SaveData = { unlockedLevels: [FIRST_LEVEL_ID], completedLevels: [], wordCards: [], stories: [] };
 
 // Strip imageUrl before writing to localStorage (images live in IndexedDB)
 function stripImageUrls(data: SaveData): SaveData {
@@ -31,9 +36,9 @@ function loadSaveFromStorage(): SaveData {
     const raw = localStorage.getItem(SAVE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      const unlockedLevels = parsed.unlockedLevels?.length ? parsed.unlockedLevels : ['g1s2u1'];
+      const unlockedLevels = parsed.unlockedLevels?.length ? parsed.unlockedLevels : [FIRST_LEVEL_ID];
       return {
-        unlockedLevels: unlockedLevels.includes('g1s2u1') ? unlockedLevels : ['g1s2u1', ...unlockedLevels],
+        unlockedLevels: unlockedLevels.includes(FIRST_LEVEL_ID) ? unlockedLevels : [FIRST_LEVEL_ID, ...unlockedLevels],
         completedLevels: parsed.completedLevels || [],
         wordCards: parsed.wordCards || [],
         stories: parsed.stories || [],

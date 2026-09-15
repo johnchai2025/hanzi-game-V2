@@ -28,7 +28,7 @@ export function useLevels() {
       setLoading(true);
       setError(null);
       
-      const res = await fetch('/curriculum/grade1_semester2.json');
+      const res = await fetch('/curriculum/grade2_semester1.json');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       
       const data: Curriculum = await res.json();

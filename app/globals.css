@@ -1,3 +1,21 @@
+/* ===== 本地字体（自托管，不依赖谷歌字体服务） =====
+   由 scripts/build-font-subset.mjs + pyftsubset 裁剪生成，只含游戏界面用到的 1038 个汉字。
+   缺字会逐字回退到 PingFang SC，不会显示成方块。新增关卡词后重跑裁剪脚本即可。 */
+@font-face {
+  font-family: 'Ma Shan Zheng';
+  src: url('/fonts/MaShanZheng-subset.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'ZCOOL KuaiLe';
+  src: url('/fonts/ZCOOLKuaiLe-subset.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ===== Design Tokens ===== */
 :root {
   /* 主色 - 朱砂红橙 */
@@ -546,23 +564,99 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ===== Game Board ===== */
+/* 双栏布局：固定2列、行数=词对数，格子按可用高度反算行高，不再强制正方形
+   （--board-rows 由 GameBoard.tsx 传入） */
 .game-board {
   display: grid;
-  grid-template-columns: repeat(var(--board-cols, 6), 1fr);
-  gap: clamp(7px, 1vw, 12px);
+  grid-template-columns: repeat(var(--board-cols, 2), 1fr);
+  grid-template-rows: repeat(var(--board-rows, 6), 1fr);
+  height: min(70dvh, calc(var(--board-rows, 6) * 74px + (var(--board-rows, 6) - 1) * 10px));
+  gap: clamp(7px, 1.4vh, 10px) clamp(30px, 5.5vw, 56px);
   background: var(--tray-wood);
   border-radius: 26px;
   padding: clamp(12px, 1.6vw, 20px);
   border: 2px solid rgba(80, 46, 18, 0.55);
+  position: relative;
   box-shadow:
     inset 0 3px 9px rgba(60, 30, 8, 0.45),
     inset 0 -2px 4px rgba(255, 225, 180, 0.10),
     0 12px 28px rgba(110, 64, 22, 0.34);
 }
 
+/* 左右两栏之间的浅色分隔线，落在两栏中点（左右 padding 对称，50% 正好在缝隙正中） */
+.game-board::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: clamp(12px, 1.6vw, 20px);
+  bottom: clamp(12px, 1.6vw, 20px);
+  width: 0;
+  border-left: 2px dashed rgba(255, 244, 214, 0.3);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* ===== 双栏连线：提示/配对成功/配对失败时，两个格子之间画一条线 ===== */
+.connector-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  overflow: visible;
+}
+
+.connector {
+  stroke-linecap: round;
+}
+
+.connector-hint {
+  stroke: var(--c-sage);
+  stroke-width: 3.5;
+  stroke-dasharray: 9 7;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 3px rgba(124, 184, 122, 0.5));
+  animation: connector-ants 0.6s linear infinite;
+}
+
+@keyframes connector-ants {
+  to { stroke-dashoffset: -32; }
+}
+
+.connector-match {
+  stroke: #f97316;
+  stroke-width: 4;
+  stroke-dasharray: var(--connector-len, 240);
+  stroke-dashoffset: var(--connector-len, 240);
+  filter: drop-shadow(0 0 5px rgba(249, 115, 22, 0.7));
+  animation: connector-match 0.35s ease-out forwards;
+}
+
+@keyframes connector-match {
+  0%   { stroke-dashoffset: var(--connector-len, 240); opacity: 1; }
+  40%  { stroke-dashoffset: 0; opacity: 1; }
+  70%  { stroke-dashoffset: 0; opacity: 1; filter: drop-shadow(0 0 9px rgba(249, 115, 22, 0.95)); }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+.connector-mismatch {
+  stroke: #dc2626;
+  stroke-width: 3.5;
+  stroke-dasharray: 8 6;
+  animation: connector-mismatch 0.4s ease-in forwards;
+}
+
+@keyframes connector-mismatch {
+  0%   { opacity: 0.9; }
+  70%  { opacity: 0.9; }
+  100% { opacity: 0; }
+}
+
 /* ===== Cell ===== */
 .cell {
-  aspect-ratio: 1;
+  aspect-ratio: auto;
+  min-height: 40px;
   background: linear-gradient(145deg, #fef3d0 0%, #fde8a8 60%, #f5c842 100%);
   border-radius: var(--radius-tile);
   border: 2px solid rgba(212, 56, 13, 0.32);
@@ -2322,8 +2416,8 @@ a { color: inherit; text-decoration: none; }
   background: linear-gradient(180deg, #fff3df, #ffe6c4); }
 .gb-board-wrap { flex: 0 0 auto; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; height: 100%; min-height: 0; }
 .gb-back { align-self: flex-start; background: rgba(255,255,255,0.7); border: none; border-radius: 999px; padding: 6px 15px; color: #8a5a24; font-family: var(--font-round); font-size: 0.85rem; cursor: pointer; }
-.gb-board { width: min(56vw, calc(100dvh - 120px)); max-width: 680px; }
-.gb-board .cell-word { font-size: clamp(18px, 2.4vw, 30px); }
+.gb-board { width: min(50vw, 380px); max-width: 380px; }
+.gb-board .cell-word { font-size: clamp(18px, 2.4vw, 28px); }
 .gb-side { flex: 0 1 420px; max-width: 460px; min-width: 300px; display: flex; flex-direction: column; gap: 14px; }
 .gb-side-head .gb-lvl { font-family: var(--font-round); font-size: 1.35rem; color: #5a3a18; }
 .gb-side-head .gb-lvl-sub { font-size: 0.8rem; color: #9a6a3a; margin-top: 1px; }

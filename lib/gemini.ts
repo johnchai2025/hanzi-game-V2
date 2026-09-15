@@ -136,6 +136,10 @@ export async function generateStory(
   const data = await deepseekFetch('/chat/completions', {
     model: DEEPSEEK_MODEL_STORY,
     messages: [{ role: 'user', content: prompt }],
+    // deepseek-flash 默认是推理模型，写故事前的"思考"会吃掉 max_tokens 预算：
+    // 实测推理常用 1600-8000 token，超出后 content 返回空，故事静默降级成本地模板。
+    // 儿童故事不需要深度推理，直接关掉——耗时 31s→3s，输出 token 约降 35 倍。
+    thinking: { type: 'disabled' },
     max_tokens: 4000,
     temperature: 0.9,
   });

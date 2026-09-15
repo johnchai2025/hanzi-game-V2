@@ -30,17 +30,20 @@ export function LevelSelectScreen({
   const [showCustom, setShowCustom] = useState(false);
 
   const character = getCharacter();
-  const isUnlocked = (id: string) => saveData.unlockedLevels.includes(id);
+  // 列表里的第一关永远可玩：换课程后老存档里只有旧课程的关卡 ID，
+  // 光靠 unlockedLevels 会导致新课程一关都开不了
+  const isUnlocked = (id: string, idx?: number) =>
+    idx === 0 || saveData.unlockedLevels.includes(id);
   const isCompleted = (id: string) => saveData.completedLevels.includes(id);
 
   // 第一个「已解锁未完成」即当前关
-  const nowIndex = levels.findIndex(l => isUnlocked(l.id) && !isCompleted(l.id));
+  const nowIndex = levels.findIndex((l, idx) => isUnlocked(l.id, idx) && !isCompleted(l.id));
   const doneCount = levels.filter(l => isCompleted(l.id)).length;
 
   const stateOf = (level: LevelData, idx: number): 'done' | 'now' | 'lock' => {
     if (isCompleted(level.id)) return 'done';
     if (idx === nowIndex) return 'now';
-    return isUnlocked(level.id) ? 'now' : 'lock';
+    return isUnlocked(level.id, idx) ? 'now' : 'lock';
   };
 
   const subOf = (st: 'done' | 'now' | 'lock') =>
@@ -50,7 +53,7 @@ export function LevelSelectScreen({
     <div className="map-main">
       <div className="map-head">
         <div className="map-title">识字大冒险</div>
-        <div className="map-sub">一年级下 · {character.name || '小伙伴'}陪你出发</div>
+        <div className="map-sub">二年级上 · {character.name || '小伙伴'}陪你出发</div>
         <div className="map-prog">⭐ {doneCount} / {levels.length}</div>
       </div>
 

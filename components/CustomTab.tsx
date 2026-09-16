@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import type { CustomLevel, ParseResult, WordPair } from '../types';
+import { CUSTOM_LEVEL_PAIR_COUNT } from '../types';
 
 interface Props {
   customLevels: CustomLevel[];
@@ -188,7 +189,7 @@ export function CustomTab({ customLevels, onPlay, onDelete, onSave }: Props) {
               <div style={{ margin: '12px 0', textAlign: 'left' }}>
                 <p>📄 <strong>{preview.title}</strong></p>
                 <p>词语总数：{preview.result.pairs.length} 个</p>
-                <p>每局随机抽取：18 个</p>
+                <p>每局随机抽取：{CUSTOM_LEVEL_PAIR_COUNT} 个</p>
                 {preview.result.warnings.length > 0 && (
                   <div className="preview-warnings">
                     {preview.result.warnings.map((w, i) => <p key={i} className="warning-text">⚠ {w}</p>)}

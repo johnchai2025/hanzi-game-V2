@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import type { LevelData, CustomLevel, WordPair, WordCard } from '../types';
+import { CUSTOM_LEVEL_BOARD_ROWS, CUSTOM_LEVEL_BOARD_COLS } from '../types';
 import { useGame, pickPairsForGame } from '../hooks/useGame';
 import { useTTS } from '../hooks/useTTS';
 import { useWordCardGeneration } from '../hooks/useWordCardGeneration';
@@ -53,8 +54,8 @@ export function GameScreen({
   getCharacter,
 }: Props) {
   // 词对数量仍按原来的方式从关卡棋盘尺寸推导（不改 curriculum/自定义关卡数据）
-  const rows = customLevel ? 4 : level.boardRows ?? 4;
-  const cols = customLevel ? 4 : level.boardCols ?? 4;
+  const rows = customLevel ? CUSTOM_LEVEL_BOARD_ROWS : level.boardRows ?? 4;
+  const cols = customLevel ? CUSTOM_LEVEL_BOARD_COLS : level.boardCols ?? 4;
   const pairCount = Math.floor((rows * cols) / 2);
 
   // 双栏布局：左栏放每个词对的第一个字，右栏放第二个字，固定两列、

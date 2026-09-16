@@ -116,6 +116,13 @@ export interface ParseResult {
 
 // ========== 常量定义 ==========
 
+// 自定义关卡固定棋盘尺寸。CustomTab.tsx 展示"每局抽取数量"的文案和
+// GameScreen.tsx 实际铺棋盘都从这里取值，不会再出现两边数字对不上的情况
+// （历史 bug：文案硬编码写的 18，实际棋盘只抽 8 个）。
+export const CUSTOM_LEVEL_BOARD_ROWS = 4;
+export const CUSTOM_LEVEL_BOARD_COLS = 4;
+export const CUSTOM_LEVEL_PAIR_COUNT = (CUSTOM_LEVEL_BOARD_ROWS * CUSTOM_LEVEL_BOARD_COLS) / 2;
+
 // 角色固定为狐狸（收敛前是 8 选 1，生图成本随"动物×场景"组合数几何级增长）。
 // 仍保留数组形态，减少 ProfileSetupModal / types 消费端的改动面。
 export const AVAILABLE_ANIMALS: Omit<AnimalCharacter, 'name'>[] = [

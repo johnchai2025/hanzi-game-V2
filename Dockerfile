@@ -28,6 +28,10 @@ ENV HOSTNAME=0.0.0.0
 # 容器没有 IPv6 出口；强制 Node 解析微软 TTS 域名时只用 IPv4
 # （mult99-game 在同一台服务器上踩过这个坑，本项目同样用 msedge-tts）
 ENV NODE_OPTIONS=--dns-result-order=ipv4first
+# 词卡图库落盘目录——必须给这条路径挂数据卷（docker run -v），否则容器
+# 重建/重启后之前生成的图片全部丢失，等于白花钱重新生成一遍
+ENV IMAGE_LIBRARY_DIR=/data/word-images
+RUN mkdir -p /data/word-images
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./

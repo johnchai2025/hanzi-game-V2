@@ -63,3 +63,6 @@ gdd/
 *.MP4
 *.mp4
 /delivery-*.png
+
+# 本地开发时的词卡图库（生产环境走挂载的数据卷，见 Dockerfile IMAGE_LIBRARY_DIR）
+.data/

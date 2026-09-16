@@ -70,9 +70,9 @@ export function RewardCardModal({ card, status, error, onClose, onRetry }: Props
               )}
             </div>
             <div className="reward-card-actions">
-              {!isGenerating && !hasImage && onRetry && (
+              {!isGenerating && onRetry && (
                 <button className="btn btn-outline" onClick={onRetry}>
-                  再试一次生成图片
+                  {hasImage ? '换一张图' : '再试一次生成图片'}
                 </button>
               )}
               <button className="btn btn-primary" onClick={onClose}>

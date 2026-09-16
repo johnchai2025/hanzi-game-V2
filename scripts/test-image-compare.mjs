@@ -14,16 +14,18 @@ const proxyDispatcher = PROXY_URL ? new ProxyAgent(PROXY_URL) : undefined;
 const OUT_DIR = new URL('../test-output/image-compare/', import.meta.url);
 
 const TEST_CASES = [
-  { word: '月亮', animal: '小兔子', scene: '森林' },
-  { word: '风筝', animal: '小狐狸', scene: '城市' },
-  { word: '雪人', animal: '小熊猫', scene: '家里' },
-  { word: '大海', animal: '小鸭子', scene: '海边' },
+  { word: '月亮' },
+  { word: '风筝' },
+  { word: '雪人' },
+  { word: '大海' },
 ];
 
 const NEGATIVE_PROMPT = '文字，汉字，拼音，字幕，标牌，水印，低分辨率，低画质，肢体畸形，构图混乱';
 
-function buildPrompt(word, animal, scene) {
-  return `绘本插画风格，一只可爱的${animal}在${scene}里，画面温馨地表现"${word}"这个中文词语的意思。色彩鲜艳明亮，卡通可爱，适合6岁小朋友欣赏，构图简洁，画面中不要出现任何文字、汉字、拼音、字幕或标牌。`;
+// 角色固定为狐狸、不传场景——跟 lib/gemini.ts 的生产提示词保持一致
+// （场景由 AI 根据词意自己判断，不再随机指定，见 lib/gemini.ts 顶部注释）
+function buildPrompt(word) {
+  return `绘本插画风格，一只可爱的小狐狸，画面温馨地表现"${word}"这个中文词语的意思，背景和道具要贴合这个词本身的场景与含义。色彩鲜艳明亮，卡通可爱，适合6-8岁小朋友欣赏，构图简洁，画面中不要出现任何文字、汉字、拼音、字幕或标牌。`;
 }
 
 function sleep(ms) {
@@ -150,9 +152,9 @@ async function run() {
   await mkdir(OUT_DIR, { recursive: true });
   const report = [];
 
-  for (const { word, animal, scene } of TEST_CASES) {
-    const prompt = buildPrompt(word, animal, scene);
-    console.log(`\n=== ${word} / ${animal} / ${scene} ===`);
+  for (const { word } of TEST_CASES) {
+    const prompt = buildPrompt(word);
+    console.log(`\n=== ${word} ===`);
     console.log(`prompt: ${prompt}`);
 
     const tasks = [

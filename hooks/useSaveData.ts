@@ -14,11 +14,13 @@ const FIRST_LEVEL_ID = 'g2s1u1';
 
 const defaultSave: SaveData = { unlockedLevels: [FIRST_LEVEL_ID], completedLevels: [], wordCards: [], stories: [] };
 
-// Strip imageUrl before writing to localStorage (images live in IndexedDB)
+// 只剥离 base64 图片（旧版直接把整串图存本地，会撑爆 localStorage 5MB 配额）。
+// 新版 imageUrl 是服务器图库的短 URL（/api/word-image/词?v=...），几十个字符，
+// 不需要挪去 IndexedDB，原样存 localStorage 即可。
 function stripImageUrls(data: SaveData): SaveData {
   return {
     ...data,
-    wordCards: data.wordCards?.map(c => ({ ...c, imageUrl: '' })) ?? [],
+    wordCards: data.wordCards?.map(c => (c.imageUrl?.startsWith('data:') ? { ...c, imageUrl: '' } : c)) ?? [],
   };
 }
 
@@ -61,21 +63,24 @@ export function useSaveData() {
   const [saveData, setSaveData] = useState<SaveData>(() => loadSaveFromStorage());
   const [customLevels, setCustomLevels] = useState<CustomLevel[]>(() => loadCustomLevelsFromStorage());
 
-  // One-time on mount: migrate old imageUrls from localStorage → IndexedDB, then hydrate
+  // One-time on mount: migrate legacy base64 imageUrls from localStorage → IndexedDB, then hydrate.
+  // 新版 imageUrl 是服务器 URL，本来就直接躺在 localStorage 里，不用挪也不用 hydrate；
+  // 这里只处理"升级前"遗留的老式 base64 卡片。
   useEffect(() => {
     const cards = saveData.wordCards;
     if (!cards || cards.length === 0) return;
 
-    // If old data had imageUrls saved in localStorage, migrate them to IndexedDB then strip
-    const cardsWithImages = cards.filter(c => c.imageUrl);
-    if (cardsWithImages.length > 0) {
-      Promise.all(cardsWithImages.map(c => saveImage(c.id, c.imageUrl)))
+    const legacyBase64Cards = cards.filter(c => c.imageUrl?.startsWith('data:'));
+    if (legacyBase64Cards.length > 0) {
+      Promise.all(legacyBase64Cards.map(c => saveImage(c.id, c.imageUrl)))
         .then(() => saveToLocalStorage(saveData))
         .catch(console.error);
     }
 
-    // Load all images from IndexedDB and hydrate in-memory state
-    loadAllImages(cards.map(c => c.id)).then(imageMap => {
+    // 只需要把"当前没有 imageUrl"的老卡片从 IndexedDB 读回来（新版 URL 卡片已经自带内容，不用查）
+    const idsNeedingHydration = cards.filter(c => !c.imageUrl).map(c => c.id);
+    if (idsNeedingHydration.length === 0) return;
+    loadAllImages(idsNeedingHydration).then(imageMap => {
       if (imageMap.size === 0) return;
       setSaveData(prev => ({
         ...prev,
@@ -106,23 +111,21 @@ export function useSaveData() {
     });
   }, []);
 
+  // 去重键统一用 word（不再是 levelId+word）——服务器图库本身就是"一词一图"全局唯一，
+  // 卡片库跟着按 word 走才不会出现同一个词存两条记录、老版本还会在 IndexedDB 里存两份图。
+  // 已有记录时允许覆盖（不再判断"已有图就不更新"），这是"换一张图"功能能写得进去的前提。
   const addWordCard = useCallback((card: WordCard) => {
-    // Persist image to IndexedDB before stripping from localStorage
-    if (card.imageUrl) {
+    // 旧版 base64 图片仍需要挪进 IndexedDB；新版是服务器 URL，直接存字符串即可
+    if (card.imageUrl?.startsWith('data:')) {
       saveImage(card.id, card.imageUrl).catch(console.error);
     }
 
     setSaveData(prev => {
       const existingCards = prev.wordCards || [];
-      const existingIndex = existingCards.findIndex(
-        c => c.levelId === card.levelId && c.word === card.word
-      );
+      const existingIndex = existingCards.findIndex(c => c.word === card.word);
       if (existingIndex >= 0) {
-        const existing = existingCards[existingIndex];
-        if (existing.imageUrl || !card.imageUrl) return prev;
-
         const updatedCards = [...existingCards];
-        updatedCards[existingIndex] = { ...existing, ...card };
+        updatedCards[existingIndex] = { ...existingCards[existingIndex], ...card };
         const next: SaveData = { ...prev, wordCards: updatedCards };
         saveToLocalStorage(next);
         return next;
@@ -136,16 +139,12 @@ export function useSaveData() {
 
   const addWordCards = useCallback((cards: WordCard[]) => {
     cards.forEach(c => {
-      if (c.imageUrl) saveImage(c.id, c.imageUrl).catch(console.error);
+      if (c.imageUrl?.startsWith('data:')) saveImage(c.id, c.imageUrl).catch(console.error);
     });
 
     setSaveData(prev => {
-      const existingWords = new Set(
-        prev.wordCards?.map(c => `${c.levelId}-${c.word}`) || []
-      );
-      const newCards = cards.filter(
-        c => !existingWords.has(`${c.levelId}-${c.word}`)
-      );
+      const existingWords = new Set(prev.wordCards?.map(c => c.word) || []);
+      const newCards = cards.filter(c => !existingWords.has(c.word));
       if (newCards.length === 0) return prev;
 
       const next: SaveData = {

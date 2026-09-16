@@ -111,7 +111,6 @@ export default function Home() {
             onAddWordCard={handleAddWordCard}
             savedWordCards={saveData.wordCards}
             getCharacter={getCharacter}
-            getRandomScene={getRandomScene}
           />
         )}
 
@@ -122,6 +121,7 @@ export default function Home() {
             customLevels={customLevels}
             onStory={() => setView('story')}
             onDeleteCard={deleteWordCard}
+            onUpdateCard={handleAddWordCard}
           />
         )}
 

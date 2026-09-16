@@ -13,16 +13,17 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// DashScope 返回的图片 URL 仅 24 小时有效，必须立即下载转存，不能原样返回/持久化
-async function downloadAsDataUrl(imgUrl: string): Promise<string> {
+// DashScope 返回的图片 URL 仅 24 小时有效，必须立即下载转存，不能原样返回/持久化。
+// 返回原始字节而不是 base64——调用方（lib/imageLibrary.ts）要用 sharp 压缩后落盘，
+// base64 只是徒增一次编解码开销。
+async function downloadImageBuffer(imgUrl: string): Promise<Buffer> {
   const MAX_ATTEMPTS = 3;
   let lastErr: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const imgRes = await fetch(imgUrl);
       if (!imgRes.ok) throw new Error(`download failed: HTTP ${imgRes.status}`);
-      const buf = Buffer.from(await imgRes.arrayBuffer());
-      return `data:image/png;base64,${buf.toString('base64')}`;
+      return Buffer.from(await imgRes.arrayBuffer());
     } catch (err) {
       lastErr = err;
       if (attempt < MAX_ATTEMPTS) await sleep(500 * attempt);
@@ -55,14 +56,13 @@ async function deepseekFetch(path: string, body: object) {
   return res.json();
 }
 
-export async function generateWordCardImage(
-  word: string,
-  animal: string,
-  scene: string
-): Promise<string> {
+// 角色固定为狐狸、不再传场景——场景由 AI 根据词意自己判断，这样同一个词的
+// 提示词永远完全确定，是"一词一图、全局共享"的前提（否则场景随机会导致
+// 同一个词在不同时刻生成出内容不一致的图，也可能出现"大海配太空"这类矛盾画面）。
+export async function generateWordCardImage(word: string): Promise<Buffer> {
   if (!DASHSCOPE_API_KEY) throw new Error('DASHSCOPE_API_KEY is not configured');
 
-  const prompt = `绘本插画风格，一只可爱的${animal}在${scene}里，画面温馨地表现"${word}"这个中文词语的意思。色彩鲜艳明亮，卡通可爱，适合6岁小朋友欣赏，构图简洁，画面中不要出现任何文字、汉字、拼音、字幕或标牌。`;
+  const prompt = `绘本插画风格，一只可爱的小狐狸，画面温馨地表现"${word}"这个中文词语的意思，背景和道具要贴合这个词本身的场景与含义。色彩鲜艳明亮，卡通可爱，适合6-8岁小朋友欣赏，构图简洁，画面中不要出现任何文字、汉字、拼音、字幕或标牌。`;
 
   const res = await fetch(DASHSCOPE_IMAGE_URL, {
     method: 'POST',
@@ -90,7 +90,7 @@ export async function generateWordCardImage(
     throw new Error(`wan2.6-t2i returned no image: ${JSON.stringify(data).slice(0, 300)}`);
   }
 
-  return downloadAsDataUrl(imgUrl);
+  return downloadImageBuffer(imgUrl);
 }
 
 const STORY_TYPES = [

@@ -55,14 +55,30 @@ else
   chk no "响应异常: $(echo "$resp" | head -c 160)"
 fi
 
-echo "[6] 生图（阿里云百炼）—— 耗时较长，请耐心"
+echo "[6] 生图（阿里云百炼 + 服务器图库）—— force=true 强制重生，确保测的是真实生成路径而非缓存"
+word="生日"
 start=$(date +%s)
 resp=$(curl -s --max-time 180 -X POST "$BASE/api/generate-image" \
-  -H 'Content-Type: application/json' -d '{"word":"太阳","animal":"兔子","scene":"森林"}')
+  -H 'Content-Type: application/json' -d "{\"word\":\"$word\",\"force\":true}")
 elapsed=$(( $(date +%s) - start ))
-if echo "$resp" | grep -q '"imageBase64":"data:image'; then
-  size=$(echo "$resp" | wc -c)
-  chk ok "出图成功（耗时 ${elapsed}s，响应 $((size/1024)) KB）"
+imageUrl=$(echo "$resp" | python3 -c "import json,sys; print(json.load(sys.stdin).get('imageUrl',''))" 2>/dev/null)
+if [ -n "$imageUrl" ]; then
+  chk ok "强制重生成功（耗时 ${elapsed}s）→ $imageUrl"
+
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$BASE$imageUrl")
+  [ "$code" = "200" ] && chk ok "图库文件可下载 ($code)" || chk no "图库文件下载失败 ($code)"
+
+  echo "[7] 图库命中 —— 同一个词不带 force 再请求一次，应秒级返回同一个 URL、不再调用生图 API"
+  start2=$(date +%s)
+  resp2=$(curl -s --max-time 15 -X POST "$BASE/api/generate-image" \
+    -H 'Content-Type: application/json' -d "{\"word\":\"$word\"}")
+  elapsed2=$(( $(date +%s) - start2 ))
+  imageUrl2=$(echo "$resp2" | python3 -c "import json,sys; print(json.load(sys.stdin).get('imageUrl',''))" 2>/dev/null)
+  if [ "$imageUrl2" = "$imageUrl" ] && [ "$elapsed2" -le 3 ]; then
+    chk ok "命中缓存（耗时 ${elapsed2}s，URL 不变）"
+  else
+    chk no "疑似未命中缓存（耗时 ${elapsed2}s，URL: $imageUrl2）"
+  fi
 else
   chk no "出图失败（${elapsed}s）: $(echo "$resp" | head -c 160)"
 fi

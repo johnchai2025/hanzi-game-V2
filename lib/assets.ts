@@ -3,16 +3,10 @@
 // 注意：真实课程数据（grade2_semester1.json）的关卡标题与定制图标主题名不一致，
 // 因此关卡图标按「索引循环」分配（见 levelIconByIndex），而非按标题精确匹配。
 
-// 动物选择图标：键 = AnimalCharacter.animal（见 types.ts AVAILABLE_ANIMALS）
+// 动物选择图标：键 = AnimalCharacter.animal（见 types.ts AVAILABLE_ANIMALS）。
+// 角色已收敛为狐狸单选，这里只留一项——不是遗漏，是有意精简。
 export const ANIMAL_ICONS: Record<string, string> = {
-  小兔子: '/assets/animals/rabbit.png',
-  小猫咪: '/assets/animals/cat.png',
-  小熊猫: '/assets/animals/panda.png',
-  小狗狗: '/assets/animals/dog.png',
-  小鸭子: '/assets/animals/duck.png',
   小狐狸: '/assets/animals/fox.png',
-  小老虎: '/assets/animals/tiger.png',
-  小青蛙: '/assets/animals/frog.png',
 };
 
 // 吉祥物缺省姿态图（当孩子所选动物无对应图时回退）

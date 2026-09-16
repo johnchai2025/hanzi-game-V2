@@ -56,9 +56,6 @@ export interface WordCard {
   imageUrl: string;
   generatedAt: number;
   levelId: string;
-  characterName: string;  // 角色名，如 '棉花糖'
-  animal: string;         // 动物类型，如 '小兔子'
-  scene: string;
 }
 
 export interface Story {
@@ -119,17 +116,15 @@ export interface ParseResult {
 
 // ========== 常量定义 ==========
 
+// 角色固定为狐狸（收敛前是 8 选 1，生图成本随"动物×场景"组合数几何级增长）。
+// 仍保留数组形态，减少 ProfileSetupModal / types 消费端的改动面。
 export const AVAILABLE_ANIMALS: Omit<AnimalCharacter, 'name'>[] = [
-  { animal: '小兔子', emoji: '🐰' },
-  { animal: '小猫咪', emoji: '🐱' },
-  { animal: '小熊猫', emoji: '🐼' },
-  { animal: '小狗狗', emoji: '🐶' },
-  { animal: '小鸭子', emoji: '🐥' },
   { animal: '小狐狸', emoji: '🦊' },
-  { animal: '小老虎', emoji: '🐯' },
-  { animal: '小青蛙', emoji: '🐸' },
 ];
 
+// 仅供故事生成使用（每次从全部 7 个里随机抽一个）。
+// 生图不再传场景——场景由 AI 根据词意自己判断，避免"大海配太空"这类矛盾画面，
+// 也让同一个词的提示词完全确定，才谈得上"一词一图"全局复用。
 export const AVAILABLE_SCENES = [
   { name: '森林', emoji: '🌲' },
   { name: '学校', emoji: '🏫' },

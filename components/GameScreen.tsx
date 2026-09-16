@@ -35,7 +35,6 @@ interface Props {
   onAddWordCard?: (card: WordCard) => void;
   savedWordCards?: WordCard[];
   getCharacter?: () => import('../types').AnimalCharacter;
-  getRandomScene?: () => string;
 }
 
 export function GameScreen({
@@ -52,7 +51,6 @@ export function GameScreen({
   onAddWordCard,
   savedWordCards = [],
   getCharacter,
-  getRandomScene,
 }: Props) {
   // 词对数量仍按原来的方式从关卡棋盘尺寸推导（不改 curriculum/自定义关卡数据）
   const rows = customLevel ? 4 : level.boardRows ?? 4;
@@ -77,72 +75,51 @@ export function GameScreen({
   const [rewardCard, setRewardCard] = useState<RewardCardState | null>(null);
   const [flippedCells, setFlippedCells] = useState<Set<string>>(new Set());
   const { speak } = useTTS();
-  const handleGeneratedCard = useCallback(() => {}, []);
 
-  const {
-    generateCardPreview,
-    resetNewCardCount,
-  } = useWordCardGeneration(
-    handleGeneratedCard,
-    getCharacter ?? (() => ({ animal: '小兔子', emoji: '🐰', name: '小兔' })),
-    getRandomScene ?? (() => '森林')
-  );
+  const { generateCardPreview } = useWordCardGeneration();
 
-  // 生成成功后自动保存到词卡库，不需要用户手动点保存
+  // 生成/换图成功后自动保存到词卡库，不需要用户手动点保存。
+  // 去重键统一用 word（不再是 levelId+word）——图库本身就是"一词一图"，
+  // 卡片库跟着按同一个键走才不会出现同一个词存两条记录、IndexedDB 里存两份图的情况。
   const persistCard = useCallback((card: WordCard) => {
     if (!card.imageUrl) return;
-    const existingCard = savedWordCards.find(
-      c => c.levelId === card.levelId && c.word === card.word
-    );
-    const willChangeLibrary = !existingCard || !existingCard.imageUrl;
-    if (!willChangeLibrary) return;
-
+    const isNewWord = !savedWordCards.some(c => c.word === card.word);
     onAddWordCard?.(card);
-    setSavedCardCount(prev => prev + 1);
-    setShowNewCardToast(true);
-    setTimeout(() => setShowNewCardToast(false), 3000);
+    if (isNewWord) {
+      setSavedCardCount(prev => prev + 1);
+      setShowNewCardToast(true);
+      setTimeout(() => setShowNewCardToast(false), 3000);
+    }
   }, [savedWordCards, onAddWordCard]);
 
   const handlePairEliminated = useCallback(({ word, chars }: { word: string; chars: WordPair }) => {
     speak(word);
 
-    // 该词语已经生成过图片（无论是在哪一关获得的），直接复用，不再调用生图 API
-    const cached = savedWordCards.find(c => c.word === word && c.imageUrl);
-    if (cached) {
-      const card: WordCard = {
-        ...cached,
-        id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        levelId: level.id,
-        generatedAt: Date.now(),
-      };
-      setRewardCard({ status: 'ready', card });
-      persistCard(card);
+    // 该词语已经生成过图片（无论是在哪一关获得的），直接复用，不用再跑一次网络请求
+    const existing = savedWordCards.find(c => c.word === word && c.imageUrl);
+    if (existing) {
+      setRewardCard({ status: 'ready', card: existing });
       return;
     }
 
-    const character = getCharacter?.() ?? { animal: '小兔子', emoji: '🐰', name: '小兔' };
-    const scene = getRandomScene?.() ?? '森林';
     const placeholderCard: WordCard = {
-      id: `card-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `card-${word}`,
       word,
       chars,
       imageUrl: '',
       generatedAt: Date.now(),
       levelId: level.id,
-      animal: character.animal,
-      characterName: character.name,
-      scene,
     };
 
     setRewardCard({ status: 'generating', card: placeholderCard });
-    generateCardPreview(word, chars, level.id, character.animal, character.name, scene).then(({ card, error }) => {
+    generateCardPreview(word, chars, level.id).then(({ card, error }) => {
       setRewardCard(current => {
-        if (!current || current.card.word !== word || current.card.levelId !== level.id) return current;
+        if (!current || current.card.word !== word) return current;
         return { status: 'ready', card, error };
       });
       if (card.imageUrl) persistCard(card);
     });
-  }, [savedWordCards, generateCardPreview, getCharacter, getRandomScene, level.id, speak, persistCard]);
+  }, [savedWordCards, generateCardPreview, level.id, speak, persistCard]);
 
   const gameOptions = useMemo(() => ({
     rows: boardRows,
@@ -180,7 +157,6 @@ export function GameScreen({
     setSavedCardCount(0);
     setRewardCard(null);
     setFlippedCells(new Set());
-    resetNewCardCount();
     const newPairs = customLevel ? pickPairsForGame(customLevel.pairs, pairCount) : pickPairsForGame(level.pairs, pairCount);
     restart(newPairs);
   };
@@ -193,20 +169,22 @@ export function GameScreen({
     setRewardCard(null);
   };
 
+  // 不满意就换一张：不管这次是"生成失败重试"还是"生成成功但想换一张"，
+  // 都走 force=true 跳过图库缓存、强制重新生成并覆盖。
   const handleRetryRewardCard = () => {
     if (!rewardCard) return;
-    const { word, chars, levelId, animal, characterName, scene } = rewardCard.card;
+    const { word, chars, levelId } = rewardCard.card;
     setRewardCard({ status: 'generating', card: rewardCard.card });
-    generateCardPreview(word, chars, levelId, animal, characterName, scene).then(({ card, error }) => {
+    generateCardPreview(word, chars, levelId, true).then(({ card, error }) => {
       setRewardCard(current => {
-        if (!current || current.card.word !== word || current.card.levelId !== levelId) return current;
+        if (!current || current.card.word !== word) return current;
         return { status: 'ready', card, error };
       });
       if (card.imageUrl) persistCard(card);
     });
   };
 
-  const character = getCharacter?.() ?? { animal: '小兔子', emoji: '🐰', name: '小伙伴' };
+  const character = getCharacter?.() ?? { animal: '小狐狸', emoji: '🦊', name: '小狐狸' };
   const progress = activePairs.length > 0 ? Math.round((eliminatedCount / activePairs.length) * 100) : 0;
   const title = customLevel ? customLevel.title : level.title;
   const mascotMsg = (() => {

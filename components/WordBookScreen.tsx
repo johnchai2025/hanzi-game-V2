@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react';
+import { useState } from 'react'
 import type { LevelData, CustomLevel, SaveData, WordCard } from '../types';
+import { fetchWordImage } from '../lib/wordImageClient';
 
 const GRADE_NAMES: Record<number, string> = { 1: '启蒙', 2: '进阶', 3: '挑战' };
 
@@ -13,12 +14,15 @@ interface Props {
   customLevels: CustomLevel[];
   onStory: () => void;
   onDeleteCard: (id: string) => void;
+  onUpdateCard: (card: WordCard) => void;
 }
 
-export function WordBookScreen({ levels, saveData, customLevels, onStory, onDeleteCard }: Props) {
+export function WordBookScreen({ levels, saveData, customLevels, onStory, onDeleteCard, onUpdateCard }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>('cards');
   const [selectedCard, setSelectedCard] = useState<WordCard | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
   const playedCustomLevels = customLevels.filter(l => l.playCount > 0);
 
   const builtInTotal = levels
@@ -72,7 +76,11 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
           <div className="album-pad">
             <div className="album-grid-pad">
               {saveData.wordCards?.map(card => (
-                <div key={card.id} className="sticker-pad got" onClick={() => setSelectedCard(card)}>
+                <div
+                  key={card.id}
+                  className="sticker-pad got"
+                  onClick={() => { setSelectedCard(card); setConfirmDelete(false); setRegenError(null); }}
+                >
                   {card.imageUrl ? (
                     <img src={card.imageUrl} alt={card.word} />
                   ) : (
@@ -169,9 +177,15 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
 
       {/* 词卡详情弹窗 */}
       {selectedCard && (
-        <div className="modal-overlay" onClick={() => { setSelectedCard(null); setConfirmDelete(false); }}>
+        <div
+          className="modal-overlay"
+          onClick={() => { setSelectedCard(null); setConfirmDelete(false); setRegenError(null); }}
+        >
           <div className="wordcard-detail-modal" onClick={e => e.stopPropagation()}>
-            <button className="close-btn" onClick={() => { setSelectedCard(null); setConfirmDelete(false); }}>×</button>
+            <button
+              className="close-btn"
+              onClick={() => { setSelectedCard(null); setConfirmDelete(false); setRegenError(null); }}
+            >×</button>
             <div className="detail-image">
               {selectedCard.imageUrl ? (
                 <img src={selectedCard.imageUrl} alt={selectedCard.word} />
@@ -184,6 +198,26 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
             <div className="detail-info">
               <h2>{selectedCard.word}</h2>
             </div>
+            <button
+              className="wordcard-regen-btn"
+              disabled={regenerating}
+              onClick={async () => {
+                setRegenerating(true);
+                setRegenError(null);
+                const { imageUrl, error } = await fetchWordImage(selectedCard.word, true);
+                setRegenerating(false);
+                if (imageUrl) {
+                  const updated: WordCard = { ...selectedCard, imageUrl, generatedAt: Date.now() };
+                  onUpdateCard(updated);
+                  setSelectedCard(updated);
+                } else {
+                  setRegenError(error ?? '生成失败，请稍后再试');
+                }
+              }}
+            >
+              {regenerating ? '生成中…' : '🔄 换一张图'}
+            </button>
+            {regenError && <div className="wordcard-regen-error">{regenError}</div>}
             {!confirmDelete ? (
               <button
                 className="wordcard-delete-btn"

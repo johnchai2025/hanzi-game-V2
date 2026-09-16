@@ -1678,6 +1678,29 @@ a { color: inherit; text-decoration: none; }
 }
 .wordcard-delete-btn:hover { background: #fee2e2; }
 
+.wordcard-regen-btn {
+  display: block;
+  width: calc(100% - 40px);
+  margin: 0 20px 10px;
+  padding: 10px;
+  background: transparent;
+  color: #2563eb;
+  border: 1.5px solid #2563eb;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.wordcard-regen-btn:hover { background: #eff6ff; }
+.wordcard-regen-btn:disabled { opacity: 0.6; cursor: default; }
+
+.wordcard-regen-error {
+  margin: 0 20px 12px;
+  font-size: 13px;
+  color: #ef4444;
+  text-align: center;
+}
+
 .wordcard-confirm-row {
   display: flex;
   flex-wrap: wrap;

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { SaveData, CustomLevel, Story, WordCard } from '../types';
 import { saveImage, loadAllImages, deleteImage } from '../lib/imageStore';
+import { applyPracticeEvent, normalizeWordPractice } from '../lib/learningProgress';
 
 const SAVE_KEY = 'hanzi-match-save';
 const CUSTOM_KEY = 'hanzi-match-custom-levels';
@@ -25,7 +26,14 @@ export function normalizeSaveData(parsed: Partial<SaveData> | null | undefined):
   if (!parsed) return defaultSave;
 
   const cards = Array.isArray(parsed.wordCards) ? parsed.wordCards : [];
-  const practiceByLevel: SaveData['practiceByLevel'] = { ...(parsed.practiceByLevel || {}) };
+  const practiceByLevel: SaveData['practiceByLevel'] = {};
+  Object.entries(parsed.practiceByLevel || {}).forEach(([levelId, levelPractice]) => {
+    const normalizedLevel: Record<string, ReturnType<typeof normalizeWordPractice>> = {};
+    Object.entries(levelPractice || {}).forEach(([word, practice]) => {
+      normalizedLevel[word] = normalizeWordPractice(practice);
+    });
+    practiceByLevel[levelId] = normalizedLevel;
+  });
 
   // 旧版卡片曾用 levelId 表示归属。只在新结构尚无该记录时迁移一次；
   // 新版卡片全局按 word 去重，不再承担关卡进度职责。
@@ -35,6 +43,9 @@ export function normalizeSaveData(parsed: Partial<SaveData> | null | undefined):
     if (!levelPractice[card.word]) {
       levelPractice[card.word] = {
         correctCount: 1,
+        wrongCount: 0,
+        hintCount: 0,
+        correctStreak: 1,
         lastPracticedAt: card.generatedAt || Date.now(),
       };
     }
@@ -148,18 +159,11 @@ export function useSaveData() {
   const recordWordPractice = useCallback((levelId: string, word: string) => {
     setSaveData(prev => {
       const levelPractice = prev.practiceByLevel?.[levelId] || {};
-      const previous = levelPractice[word];
       const next: SaveData = {
         ...prev,
         practiceByLevel: {
           ...(prev.practiceByLevel || {}),
-          [levelId]: {
-            ...levelPractice,
-            [word]: {
-              correctCount: (previous?.correctCount || 0) + 1,
-              lastPracticedAt: Date.now(),
-            },
-          },
+          [levelId]: applyPracticeEvent(levelPractice, { type: 'correct', words: [word] }, Date.now()),
         },
       };
       saveToLocalStorage(next);

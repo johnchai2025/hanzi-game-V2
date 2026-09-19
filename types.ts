@@ -61,6 +61,9 @@ export interface WordCard {
 
 export interface WordPractice {
   correctCount: number;
+  wrongCount: number;
+  hintCount: number;
+  correctStreak: number;
   lastPracticedAt: number;
 }
 

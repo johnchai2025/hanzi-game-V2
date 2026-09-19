@@ -3,8 +3,10 @@
 import { useState } from 'react'
 import type { LevelData, CustomLevel, SaveData, WordCard } from '../types';
 import { STORY_CARD_MINIMUM } from '../types';
+import { getLearningStatus, normalizeWordPractice } from '../lib/learningProgress';
 
 type TabType = 'words' | 'cards';
+type LearningFilter = 'all' | 'support' | 'familiar';
 
 interface Props {
   levels: LevelData[];
@@ -16,15 +18,47 @@ interface Props {
 
 export function WordBookScreen({ levels, saveData, customLevels, onStory, onDeleteCard }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>('cards');
+  const [learningFilter, setLearningFilter] = useState<LearningFilter>('all');
   const [selectedCard, setSelectedCard] = useState<WordCard | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const practiceByLevel = saveData.practiceByLevel || {};
-  const practicedCustomLevels = customLevels.filter(level =>
-    Object.keys(practiceByLevel[level.id] || {}).length > 0
+  const isActuallyPracticed = (practice: unknown) => {
+    const normalized = normalizeWordPractice(practice);
+    return normalized.correctCount > 0 || normalized.wrongCount > 0
+      || normalized.hintCount > 0 || normalized.lastPracticedAt > 0;
+  };
+  const matchesLearningFilter = (practice: unknown) => {
+    const status = getLearningStatus(normalizeWordPractice(practice));
+    if (learningFilter === 'familiar') return status === 'familiar';
+    if (learningFilter === 'support') return status === 'needs-support' || status === 'familiarizing';
+    return true;
+  };
+  const practicedEntries = Object.entries(practiceByLevel).flatMap(([levelId, byWord]) =>
+    Object.entries(byWord).filter(([, practice]) => isActuallyPracticed(practice))
+      .map(([word, practice]) => ({ levelId, word, practice })),
   );
-  const totalWords = new Set(
-    Object.values(practiceByLevel).flatMap(levelPractice => Object.keys(levelPractice))
-  ).size;
+  const uniquePracticeByWord = new Map<string, (typeof practicedEntries)[number]>();
+  practicedEntries.forEach(entry => {
+    const existing = uniquePracticeByWord.get(entry.word);
+    if (!existing || normalizeWordPractice(entry.practice).correctStreak > normalizeWordPractice(existing.practice).correctStreak) {
+      uniquePracticeByWord.set(entry.word, entry);
+    }
+  });
+  const allPracticedWords = [...uniquePracticeByWord.values()];
+  const filterCounts = {
+    all: allPracticedWords.length,
+    support: allPracticedWords.filter(({ practice }) => {
+      const status = getLearningStatus(normalizeWordPractice(practice));
+      return status === 'needs-support' || status === 'familiarizing';
+    }).length,
+    familiar: allPracticedWords.filter(({ practice }) => getLearningStatus(normalizeWordPractice(practice)) === 'familiar').length,
+  };
+  const practicedCustomLevels = customLevels.filter(level =>
+    Object.values(practiceByLevel[level.id] || {}).some(isActuallyPracticed)
+  );
+  const knownLevelIds = new Set([...levels.map(level => level.id), ...customLevels.map(level => level.id)]);
+  const orphanEntries = practicedEntries.filter(entry => !knownLevelIds.has(entry.levelId) && matchesLearningFilter(entry.practice));
+  const totalWords = filterCounts.all;
 
   const totalCards = saveData.wordCards?.length || 0;
 
@@ -105,22 +139,54 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
             <span className="wordbook-hero-label">已练习的词语</span>
           </div>
 
+          <div className="wordbook-filters" role="group" aria-label="按学习状态筛选">
+            {([
+              ['all', '全部练过'],
+              ['support', '待巩固'],
+              ['familiar', '已经熟悉'],
+            ] as const).map(([key, label]) => (
+              <button key={key} type="button"
+                className={`wordbook-filter${learningFilter === key ? ' active' : ''}`}
+                aria-pressed={learningFilter === key}
+                onClick={() => setLearningFilter(key)}>
+                <span>{label}</span><b>{filterCounts[key]}</b>
+              </button>
+            ))}
+          </div>
+
+          {filterCounts[learningFilter] === 0 && (
+            <div className="wordbook-filter-empty" role="status">
+              {learningFilter === 'familiar'
+                ? '再多练几次，熟悉的词语就会来到这里～'
+                : learningFilter === 'support'
+                  ? '现在没有需要巩固的词语，保持得真棒！'
+                  : '完成一次配对后，练过的词语会收录在这里～'}
+            </div>
+          )}
+
           <div className="wordbook-sections">
             {levels.map((level, index) => {
-              const practicedWords = Object.keys(practiceByLevel[level.id] || {});
+              const levelPractice = practiceByLevel[level.id] || {};
+              const allLevelPracticedWords = Object.entries(levelPractice)
+                .filter(([, practice]) => isActuallyPracticed(practice));
+              const practicedWords = allLevelPracticedWords
+                .filter(([, practice]) => matchesLearningFilter(practice))
+                .map(([word]) => word);
               const isLocked = index !== 0 && !saveData.unlockedLevels.includes(level.id);
               return (
                 <div key={level.id} className={`wordbook-section${isLocked ? ' wordbook-section-locked' : ''}`}>
                   <div className="wordbook-section-header">
                     <span className="wordbook-section-title">第{level.level}关 · {level.title}</span>
                     <span className={`wordbook-section-badge${isLocked ? ' badge-locked' : ''}`}>
-                      {isLocked ? '未解锁' : `已练习 ${practicedWords.length} / ${level.pairs.length}`}
+                      {isLocked ? '未解锁' : `已练习 ${allLevelPracticedWords.length} / ${level.pairs.length}`}
                     </span>
                   </div>
                   {isLocked ? (
                     <div className="wordbook-locked-hint">完成上一关后解锁</div>
                   ) : practicedWords.length === 0 ? (
-                    <div className="wordbook-empty-hint">配对成功的词语会收录在这里～</div>
+                    <div className="wordbook-empty-hint">
+                      {allLevelPracticedWords.length === 0 ? '配对成功的词语会收录在这里～' : '这一关暂时没有符合筛选的词语～'}
+                    </div>
                   ) : (
                     <div className="wordbook-chips">
                       {practicedWords.map(word => <span key={word} className="word-chip">{word}</span>)}
@@ -146,14 +212,30 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
                   <div key={level.id} className="wordbook-custom-group">
                     <div className="wordbook-custom-title">{level.title}</div>
                     <div className="wordbook-chips">
-                      {Object.keys(practiceByLevel[level.id] || {}).map(word => (
+                      {Object.entries(practiceByLevel[level.id] || {})
+                        .filter(([, practice]) => isActuallyPracticed(practice) && matchesLearningFilter(practice))
+                        .map(([word]) => (
                         <span key={word} className="word-chip">{word}</span>
-                      ))}
+                        ))}
                     </div>
                   </div>
                 ))
               )}
             </div>
+
+            {orphanEntries.length > 0 && (
+              <div className="wordbook-section">
+                <div className="wordbook-section-header">
+                  <span className="wordbook-section-title">其他练习</span>
+                  <span className="wordbook-section-badge">已练习 {orphanEntries.length}</span>
+                </div>
+                <div className="wordbook-chips">
+                  {orphanEntries.map(({ levelId, word }) => (
+                    <span key={`${levelId}-${word}`} className="word-chip">{word}</span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

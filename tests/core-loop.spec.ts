@@ -324,6 +324,8 @@ test('mission completion waits for the final restored beat before showing its mo
   await expect(page.locator('.cmp-modal')).toHaveCount(0);
   await page.clock.runFor(1);
   await expect(page.locator('.cmp-modal')).toBeVisible({ timeout: 500 });
+  await expect(page.locator('.cmp-learning-summary')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '下一关 →' })).toBeVisible();
   expect(requests.some(url => url.includes('/api/generate-image'))).toBe(false);
 });
 
@@ -544,6 +546,57 @@ test('word book reports only words actually practiced', async ({ page }) => {
   await expect(page.getByRole('button', { name: /换一张图/ })).toHaveCount(0);
 });
 
+test('word book learning filters count and show only actually practiced words', async ({ page }) => {
+  await seed(page, {
+    unlockedLevels: ['g2s1u1'],
+    completedLevels: [],
+    wordCards: [],
+    stories: [],
+    practiceByLevel: {
+      g2s1u1: {
+        洗手: reviewPractice({ correctStreak: 0 }),
+        开门: reviewPractice({ correctStreak: 2 }),
+        写字: reviewPractice({ correctStreak: 3 }),
+        读书: { correctCount: 0, wrongCount: 0, hintCount: 0, correctStreak: 3, lastPracticedAt: 0 },
+      },
+      'removed-source': { 星光: reviewPractice({ correctStreak: 1 }) },
+    },
+    levelStars: {},
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: /词卡库/ }).click();
+  await page.getByRole('button', { name: /词语本/ }).click();
+
+  const filters = page.getByRole('group', { name: '按学习状态筛选' });
+  await expect(filters.getByRole('button', { name: /全部练过.*4/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(filters.getByRole('button', { name: /待巩固.*3/ })).toBeVisible();
+  await expect(filters.getByRole('button', { name: /已经熟悉.*1/ })).toBeVisible();
+  await expect(page.locator('.wordbook-sections').getByText('读书', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.wordbook-sections').getByText('星光', { exact: true })).toBeVisible();
+
+  await filters.getByRole('button', { name: /待巩固/ }).click();
+  await expect(filters.getByRole('button', { name: /待巩固/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.wordbook-sections').getByText('洗手', { exact: true })).toBeVisible();
+  await expect(page.locator('.wordbook-sections').getByText('开门', { exact: true })).toBeVisible();
+  await expect(page.locator('.wordbook-sections').getByText('写字', { exact: true })).toHaveCount(0);
+
+  await filters.getByRole('button', { name: /已经熟悉/ }).click();
+  await expect(page.locator('.wordbook-sections').getByText('写字', { exact: true })).toBeVisible();
+  await expect(page.locator('.wordbook-sections').getByText('洗手', { exact: true })).toHaveCount(0);
+});
+
+test('word book filters use encouraging empty states', async ({ page }) => {
+  await seed(page, {
+    unlockedLevels: ['g2s1u1'], completedLevels: [], wordCards: [], stories: [],
+    practiceByLevel: { g2s1u1: { 洗手: reviewPractice({ correctStreak: 1 }) } }, levelStars: {},
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: /词卡库/ }).click();
+  await page.getByRole('button', { name: /词语本/ }).click();
+  await page.getByRole('button', { name: /已经熟悉/ }).click();
+  await expect(page.getByRole('status')).toHaveText('再多练几次，熟悉的词语就会来到这里～');
+});
+
 function reviewPractice(overrides: Partial<{
   correctCount: number;
   wrongCount: number;
@@ -660,6 +713,8 @@ test('visible review flow routes duplicate, wrong, hint, and correct events with
   await completeReviewRound(page);
   await expect(page.locator('.cmp-modal')).toBeVisible();
   await expect(page.locator('.cmp-learning-summary')).toContainText('本轮练习 6 个词');
+  await expect(page.locator('.cmp-learning-summary')).toContainText('下次再见');
+  await expect(page.locator('.cmp-learning-summary')).not.toContainText('更熟悉');
 
   await expect.poll(async () => page.evaluate(({ duplicate, originalCurriculum, originalCustom }) => {
     const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
@@ -691,7 +746,7 @@ test('visible review flow routes duplicate, wrong, hint, and correct events with
   });
 });
 
-test('two-candidate review uses exactly four cells and a two-beat mission scene', async ({ page }) => {
+test('two-candidate review uses exactly four cells, a two-beat scene, and positive summary rows', async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 768 });
   const words = curriculum.units[0].pairs.slice(0, 2).map(pair => pair.join(''));
   await seed(page, {
@@ -699,7 +754,7 @@ test('two-candidate review uses exactly four cells and a two-beat mission scene'
     completedLevels: [],
     wordCards: [],
     stories: [],
-    practiceByLevel: { g2s1u1: Object.fromEntries(words.map(word => [word, reviewPractice()])) },
+    practiceByLevel: { g2s1u1: Object.fromEntries(words.map(word => [word, reviewPractice({ correctStreak: 2 })])) },
     levelStars: {},
   });
   await page.goto('/');
@@ -709,4 +764,9 @@ test('two-candidate review uses exactly four cells and a two-beat mission scene'
   await expect(page.locator('.mission-beat')).toHaveCount(2);
   await expect(page.locator('.mission-progress output')).toHaveText('0 / 2');
   await expect(page.locator('.mission-stage')).toHaveClass(/mission-stage-beat-count-2/);
+
+  await completeReviewRound(page);
+  await expect(page.locator('.cmp-learning-summary')).toContainText('本轮练习 2 个词');
+  await expect(page.locator('.cmp-learning-summary')).toContainText('更熟悉 2 个');
+  await expect(page.locator('.cmp-learning-summary')).not.toContainText('下次再见');
 });

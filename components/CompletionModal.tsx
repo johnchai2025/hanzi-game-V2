@@ -33,10 +33,14 @@ export function CompletionModal({ onNextLevel, onRestart, onSelectLevel, onWordB
           <div className="cmp-reward">🎴 本关收集了 {newCardCount} 张词卡！</div>
         )}
         {learningSummary && (
-          <div className="cmp-learning-summary">
-            本轮练习 {learningSummary.practicedCount} 个词
-            {learningSummary.becameFamiliarCount > 0 && ` · 更熟悉 ${learningSummary.becameFamiliarCount} 个`}
-            {learningSummary.revisitCount > 0 && ` · 下次再见 ${learningSummary.revisitCount} 个`}
+          <div className="cmp-learning-summary" aria-label="本轮学习小结">
+            <div><span>本轮练习</span>{' '}<b>{learningSummary.practicedCount} 个词</b></div>
+            {learningSummary.becameFamiliarCount > 0 && (
+              <div><span>更熟悉</span>{' '}<b>{learningSummary.becameFamiliarCount} 个</b></div>
+            )}
+            {learningSummary.revisitCount > 0 && (
+              <div><span>下次再见</span>{' '}<b>{learningSummary.revisitCount} 个</b></div>
+            )}
           </div>
         )}
         <div className="cmp-actions">

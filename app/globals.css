@@ -2550,6 +2550,9 @@ a { color: inherit; text-decoration: none; }
 .cmp-stars { font-size: 2rem; letter-spacing: 4px; filter: drop-shadow(0 3px 6px rgba(250,173,20,0.6)); }
 .cmp-title { font-family: var(--font-hand); font-size: 1.7rem; color: var(--c-ink); margin-top: 2px; }
 .cmp-sub { color: #8a6a4a; font-size: 0.9rem; margin: 4px 0 0; }
+.cmp-learning-summary { background: #fff8e9; border: 1.5px solid #f1d39c; border-radius: 16px; display: grid; gap: 6px; margin-top: 12px; padding: 10px 14px; color: #80542c; font-family: var(--font-round); }
+.cmp-learning-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.cmp-learning-summary b { color: var(--c-vermilion); }
 .cmp-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
 
 .rw-modal { display: flex; gap: 22px; background: #fff; border-radius: 28px; max-width: 580px; width: 100%; padding: 24px; box-shadow: 0 24px 60px rgba(0,0,0,0.32); }
@@ -2587,6 +2590,13 @@ a { color: inherit; text-decoration: none; }
 .wb-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #fff; border-radius: 16px; padding: 9px 16px; box-shadow: 0 3px 10px rgba(150,100,40,0.12); }
 .wb-foot-txt { font-family: var(--font-round); color: #b45309; font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; }
 .wb-words-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.wordbook-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.wordbook-filter { min-height: 48px; border: 1.5px solid #e7cda4; border-radius: 15px; background: rgba(255,255,255,0.72); color: #79502c; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 12px; font-family: var(--font-round); font-weight: 700; }
+.wordbook-filter b { min-width: 24px; border-radius: 999px; background: #f5e6cf; color: #a25d24; padding: 2px 7px; font-size: 0.78rem; }
+.wordbook-filter.active { border-color: var(--c-vermilion-mid); background: #fff8e9; color: var(--c-vermilion); box-shadow: 0 3px 10px rgba(160,90,30,0.14); }
+.wordbook-filter.active b { background: var(--c-amber-light); color: var(--c-vermilion); }
+.wordbook-filter:focus-visible { outline: 3px solid rgba(245,114,42,0.38); outline-offset: 2px; }
+.wordbook-filter-empty { background: rgba(255,255,255,0.66); border: 1.5px dashed #dfbf91; border-radius: 16px; color: #94683d; font-family: var(--font-round); font-weight: 700; padding: 14px 18px; text-align: center; }
 
 /* ===================== 07 故事屋：温暖阅读小屋（横屏） ===================== */
 .room-main { position: relative; padding: calc(16px + env(safe-area-inset-top)) 22px 60px; overflow: hidden; flex: 1; min-height: 0; display: flex; flex-direction: column;

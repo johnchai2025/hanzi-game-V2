@@ -384,6 +384,7 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
   }, [cells, selected, activePairs, options, schedule, showFeedback]);
 
   return {
+    activePairs,
     cells,
     eliminatedCount,
     isComplete,

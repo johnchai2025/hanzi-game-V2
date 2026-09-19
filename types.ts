@@ -72,6 +72,25 @@ export interface AttemptSummary {
   hintCount: number;
 }
 
+export type GameMode = 'curriculum' | 'custom' | 'review';
+
+export interface LearningSummary {
+  practicedCount: number;
+  becameFamiliarCount: number;
+  revisitCount: number;
+}
+
+export interface ReviewWordSource {
+  sourceLevelId: string;
+  word: string;
+}
+
+export interface ReviewContext {
+  level: LevelData;
+  sourceByWord: Record<string, ReviewWordSource>;
+  baselineBySourceKey: Record<string, WordPractice>;
+}
+
 export interface Story {
   id: string;
   title?: string;      // AI 生成的故事标题

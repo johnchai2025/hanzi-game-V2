@@ -1,6 +1,6 @@
 'use client'
 
-import type { AnimalCharacter } from '@/types';
+import type { AnimalCharacter, LearningSummary } from '@/types';
 import { MascotImg } from './MascotImg';
 
 interface Props {
@@ -11,9 +11,10 @@ interface Props {
   newCardCount?: number;
   character?: AnimalCharacter;
   stars: number;
+  learningSummary?: LearningSummary;
 }
 
-export function CompletionModal({ onNextLevel, onRestart, onSelectLevel, onWordBook, newCardCount = 0, character, stars }: Props) {
+export function CompletionModal({ onNextLevel, onRestart, onSelectLevel, onWordBook, newCardCount = 0, character, stars, learningSummary }: Props) {
   return (
     <div className="modal-overlay">
       <div className="confetti-wrap" aria-hidden="true">
@@ -30,6 +31,13 @@ export function CompletionModal({ onNextLevel, onRestart, onSelectLevel, onWordB
         <div className="cmp-sub">全部消除，过关！</div>
         {newCardCount > 0 && (
           <div className="cmp-reward">🎴 本关收集了 {newCardCount} 张词卡！</div>
+        )}
+        {learningSummary && (
+          <div className="cmp-learning-summary">
+            本轮练习 {learningSummary.practicedCount} 个词
+            {learningSummary.becameFamiliarCount > 0 && ` · 更熟悉 ${learningSummary.becameFamiliarCount} 个`}
+            {learningSummary.revisitCount > 0 && ` · 下次再见 ${learningSummary.revisitCount} 个`}
+          </div>
         )}
         <div className="cmp-actions">
           {onNextLevel && (

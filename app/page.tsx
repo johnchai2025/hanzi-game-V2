@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react';
-import type { LevelData, CustomLevel, Story, UserProfile, WordCard } from '@/types';
+import { useEffect, useRef, useState } from 'react';
+import type { LevelData, CustomLevel, ReviewContext, Story, UserProfile, WordCard } from '@/types';
 import { useLevels } from '@/hooks/useLevels';
 import { useSaveData } from '@/hooks/useSaveData';
 import { useProfile } from '@/hooks/useProfile';
@@ -12,6 +12,8 @@ import { StoryScreen } from '@/components/StoryScreen';
 import { ProfileSetupModal } from '@/components/ProfileSetupModal';
 import { NavRail, type NavTab } from '@/components/NavRail';
 import { OrientationGate } from '@/components/OrientationGate';
+import { buildReviewCandidates, selectDailyReview } from '@/lib/reviewSelection';
+import { createReviewContext } from '@/lib/reviewRound';
 
 type View = 'levelselect' | 'game' | 'wordbook' | 'story';
 
@@ -23,6 +25,40 @@ export default function Home() {
   const [view, setView] = useState<View>('levelselect');
   const [activeLevel, setActiveLevel] = useState<LevelData | null>(null);
   const [activeCustomLevel, setActiveCustomLevel] = useState<CustomLevel | null>(null);
+  const [activeReviewContext, setActiveReviewContext] = useState<ReviewContext | null>(null);
+  const reviewBootstrapRef = useRef(false);
+
+  // Task 6 adds the approved visible entry. Until then, this programmatic route
+  // keeps the complete review wiring testable without exposing unfinished UI.
+  useEffect(() => {
+    if (loading || reviewBootstrapRef.current || window.location.hash !== '#review') return;
+    const candidates = buildReviewCandidates({
+      builtInLevels: levels.map(level => ({
+        id: level.id,
+        unlocked: saveData.unlockedLevels.includes(level.id),
+        pairs: level.pairs,
+        practiceByWord: saveData.practiceByLevel[level.id] || {},
+      })),
+      customLevels: customLevels.map(level => ({
+        id: level.id,
+        createdAt: level.createdAt,
+        pairs: level.pairs,
+        practiceByWord: saveData.practiceByLevel[level.id] || {},
+      })),
+    });
+    const selection = selectDailyReview(candidates);
+    if (!selection.available) return;
+    const context = createReviewContext(selection.candidates, saveData.practiceByLevel);
+    const timer = window.setTimeout(() => {
+      if (reviewBootstrapRef.current) return;
+      reviewBootstrapRef.current = true;
+      setActiveReviewContext(context);
+      setActiveCustomLevel(null);
+      setActiveLevel(context.level);
+      setView('game');
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [customLevels, levels, loading, saveData]);
 
   if (loading) {
     return (
@@ -50,18 +86,21 @@ export default function Home() {
   };
 
   const handleSelectLevel = (level: LevelData) => {
+    setActiveReviewContext(null);
     setActiveLevel(level);
     setActiveCustomLevel(null);
     setView('game');
   };
 
   const handlePlayCustom = (level: CustomLevel) => {
+    setActiveReviewContext(null);
     setActiveCustomLevel(level);
     setActiveLevel(levels[0] ?? null);
     setView('game');
   };
 
   const handleNextLevel = (level: LevelData) => {
+    setActiveReviewContext(null);
     setActiveLevel(level);
     setActiveCustomLevel(null);
   };
@@ -97,10 +136,15 @@ export default function Home() {
       <main className="app-content">
         {view === 'game' && activeLevel && (
           <GameScreen
-            key={activeCustomLevel ? activeCustomLevel.id : activeLevel.id}
+            key={activeReviewContext ? activeReviewContext.level.id : activeCustomLevel ? activeCustomLevel.id : activeLevel.id}
             level={activeLevel}
-            nextLevel={activeCustomLevel ? null : getNextLevel(activeLevel)}
-            onSelectLevel={() => setView('levelselect')}
+            mode={activeReviewContext ? 'review' : activeCustomLevel ? 'custom' : 'curriculum'}
+            reviewContext={activeReviewContext ?? undefined}
+            nextLevel={activeReviewContext || activeCustomLevel ? null : getNextLevel(activeLevel)}
+            onSelectLevel={() => {
+              setActiveReviewContext(null);
+              setView('levelselect');
+            }}
             onNextLevel={handleNextLevel}
             onComplete={handleComplete}
             customLevel={activeCustomLevel ?? undefined}

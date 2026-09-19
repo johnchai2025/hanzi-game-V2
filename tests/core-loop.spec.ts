@@ -92,6 +92,17 @@ async function findVisibleCrossColumnMismatch(page: Page) {
   throw new Error(`No visible cross-column mismatch found in ${cells.map(cell => cell.char).join(',')}`);
 }
 
+async function completeVisibleRound(page: Page) {
+  const total = await page.locator('.mission-progress output').evaluate(element =>
+    Number(element.textContent?.split('/')[1]?.trim() || 0));
+  for (let restored = 1; restored <= total; restored += 1) {
+    const { left, right } = await findVisiblePair(page);
+    await left.click();
+    await right.click();
+    await page.clock.runFor(300);
+  }
+}
+
 test('correct matching is immediate, non-blocking, and image-free', async ({ page }) => {
   await seed(page);
   const requests: string[] = [];
@@ -300,6 +311,34 @@ test('mission completion waits for the final restored beat before showing its mo
   await page.clock.runFor(1);
   await expect(page.locator('.cmp-modal')).toBeVisible({ timeout: 500 });
   expect(requests.some(url => url.includes('/api/generate-image'))).toBe(false);
+});
+
+test('restart at 650ms cancels the old 700ms completion modal', async ({ page }) => {
+  await page.clock.install({ time: new Date('2020-01-01T00:00:00Z') });
+  await seed(page);
+  await enterFirstLevel(page);
+  await page.clock.pauseAt(new Date('2020-01-01T00:01:00Z'));
+  await completeVisibleRound(page);
+
+  await page.clock.runFor(650);
+  await page.getByRole('button', { name: /重新摆放/ }).click();
+  await page.clock.runFor(100);
+  await expect(page.locator('.cmp-modal')).toHaveCount(0);
+  await expect(page.locator('.mission-progress output')).toHaveText('0 / 6');
+});
+
+test('leaving a completed round cancels its pending modal', async ({ page }) => {
+  await page.clock.install({ time: new Date('2020-01-01T00:00:00Z') });
+  await seed(page);
+  await enterFirstLevel(page);
+  await page.clock.pauseAt(new Date('2020-01-01T00:01:00Z'));
+  await completeVisibleRound(page);
+
+  await page.clock.runFor(650);
+  await page.getByRole('button', { name: /选关/ }).click();
+  await page.clock.runFor(100);
+  await expect(page.locator('.cmp-modal')).toHaveCount(0);
+  await expect(page.locator('.map-main')).toBeVisible();
 });
 
 test('mission, board, and controls remain inside the 1024 by 768 game viewport', async ({ page }) => {

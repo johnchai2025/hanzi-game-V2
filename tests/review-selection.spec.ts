@@ -121,6 +121,22 @@ test('daily candidates filter invalid sources and recent familiar words', () => 
     .toEqual(['u1:天地', 'custom-live:风雨']);
 });
 
+test('all-zero placeholder records never become daily review candidates', () => {
+  const candidates = buildReviewCandidates({
+    builtInLevels: [{
+      id: 'u1',
+      unlocked: true,
+      pairs: [pair('天地')],
+      practiceByWord: { 天地: { correctCount: 0, wrongCount: 0, hintCount: 0, correctStreak: 0, lastPracticedAt: 0 } },
+    }],
+    customLevels: [],
+    now: NOW,
+  });
+
+  expect(candidates).toEqual([]);
+  expect(selectDailyReview(candidates)).toEqual({ available: false, candidates: [] });
+});
+
 test('daily selection keeps 2–6 exact candidates and reports fewer than two unavailable', () => {
   const make = (count: number) => Array.from({ length: count }, (_, index) => ({
     id: `u${index}`,

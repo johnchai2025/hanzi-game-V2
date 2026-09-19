@@ -57,6 +57,15 @@ export function normalizeWordPractice(value: unknown): WordPractice {
   };
 }
 
+/** A stored object alone is not evidence that the child encountered a word. */
+export function isActuallyPracticed(value: unknown): boolean {
+  const practice = normalizeWordPractice(value);
+  return practice.correctCount > 0
+    || practice.wrongCount > 0
+    || practice.hintCount > 0
+    || practice.lastPracticedAt > 0;
+}
+
 export function applyPracticeEvent(
   practiceByWord: Readonly<Record<string, WordPractice | undefined>>,
   event: PracticeEvent,

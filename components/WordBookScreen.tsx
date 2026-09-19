@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { LevelData, CustomLevel, SaveData, WordCard } from '../types';
 import { STORY_CARD_MINIMUM } from '../types';
-import { getLearningStatus, normalizeWordPractice } from '../lib/learningProgress';
+import { getLearningStatus, isActuallyPracticed, normalizeWordPractice } from '../lib/learningProgress';
 import { resolveCanonicalPracticeEntries } from '../lib/reviewSelection';
 
 type TabType = 'words' | 'cards';
@@ -24,11 +24,6 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
   const [selectedCard, setSelectedCard] = useState<WordCard | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const practiceByLevel = saveData.practiceByLevel || {};
-  const isActuallyPracticed = (practice: unknown) => {
-    const normalized = normalizeWordPractice(practice);
-    return normalized.correctCount > 0 || normalized.wrongCount > 0
-      || normalized.hintCount > 0 || normalized.lastPracticedAt > 0;
-  };
   const matchesLearningFilter = (practice: unknown) => {
     const status = getLearningStatus(normalizeWordPractice(practice));
     if (learningFilter === 'familiar') return status === 'familiar';

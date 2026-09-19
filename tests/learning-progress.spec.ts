@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
   applyPracticeEvent,
   getLearningStatus,
+  isActuallyPracticed,
   isDueForReview,
   normalizeWordPractice,
   reviewPriority,
@@ -52,6 +53,14 @@ test('normalizes legacy, absent, negative, and corrupt practice fields', () => {
     correctStreak: Number.MAX_SAFE_INTEGER,
     lastPracticedAt: Number.MAX_SAFE_INTEGER,
   });
+});
+
+test('distinguishes real practice from normalized all-zero placeholders', () => {
+  expect(isActuallyPracticed(normalizeWordPractice({}))).toBe(false);
+  expect(isActuallyPracticed({ correctCount: 1 })).toBe(true);
+  expect(isActuallyPracticed({ wrongCount: 1 })).toBe(true);
+  expect(isActuallyPracticed({ hintCount: 1 })).toBe(true);
+  expect(isActuallyPracticed({ lastPracticedAt: 1 })).toBe(true);
 });
 
 test('applies correct, wrong, and hint events with one update per distinct word', () => {

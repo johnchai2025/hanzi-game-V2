@@ -1,4 +1,4 @@
-import { isDueForReview, normalizeWordPractice, reviewPriority } from '@/lib/learningProgress';
+import { isActuallyPracticed, isDueForReview, normalizeWordPractice, reviewPriority } from '@/lib/learningProgress';
 import type { WordPair, WordPractice } from '@/types';
 
 export interface SelectionOptions {
@@ -156,7 +156,7 @@ export function resolveCanonicalPracticeEntries<T extends CanonicalPracticeEntry
 ): Array<ResolvedCanonicalPracticeEntry<T>> {
   const byWord = new Map<string, Array<ResolvedCanonicalPracticeEntry<T>>>();
   entries.forEach(entry => {
-    if (!entry.word) return;
+    if (!entry.word || !isActuallyPracticed(entry.practice)) return;
     const resolved = {
       ...entry,
       practice: normalizeWordPractice(entry.practice),

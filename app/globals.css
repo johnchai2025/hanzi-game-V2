@@ -2635,7 +2635,7 @@ a { color: inherit; text-decoration: none; }
 .mission-beat-5 { left: 4%; bottom: 12px; }
 .mission-beat-6 { right: 4%; bottom: 13px; }
 .mission-beat-7 { left: 38%; top: 32px; }
-.mission-beat-8 { left: 40%; bottom: 16px; }
+.mission-beat-8 { right: 20%; top: 4px; }
 
 .mission-mascot { align-items: center; background: rgba(255, 251, 240, 0.82); border-radius: 14px; bottom: 12px; box-shadow: 0 3px 9px rgba(113, 77, 32, 0.16); display: flex; flex-direction: column; font-family: var(--font-round); font-size: 0.67rem; font-weight: 700; gap: 1px; left: 50%; padding: 3px; position: absolute; transform: translateX(-50%); z-index: 7; }
 .mission-mascot .mascot-img { height: 42px; width: 42px; }
@@ -2651,6 +2651,5 @@ a { color: inherit; text-decoration: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mission-beat.restored .mission-beat-mark { animation: none; }
-  .mission-beat, .mission-beat *, .mission-mascot { transition-duration: 0ms !important; animation-duration: 0ms !important; transform: none !important; }
+  .mission-beat.restored .mission-beat-mark { animation: none; transition: none; }
 }

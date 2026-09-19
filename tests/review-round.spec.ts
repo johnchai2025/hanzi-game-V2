@@ -117,8 +117,8 @@ test('restart refreshes baseline and deadlock replacement stays exact, solvable,
   });
   expect(refreshed.baselineBySourceKey['g2s1u1\u0000苹果'].correctStreak).toBe(2);
 
-  // Four stuck slots but only two eliminated words reproduces the old
-  // undersized fallback. Recovery must reuse valid words to fill all slots.
+  // The pool contains already-eliminated words, but recovery must reconstruct
+  // four unique source-backed slots without duplicating their learning credit.
   const stuckWords = new Set(['花朵', '天空', '书包', '铅笔']);
   const replacement = computeReshuffleReplacement(
     context.level.pairs,
@@ -128,7 +128,8 @@ test('restart refreshes baseline and deadlock replacement stays exact, solvable,
   );
   expect(replacement.freshPairs).toHaveLength(4);
   expect(replacement.activePairs).toHaveLength(6);
-  expect(replacement.freshPairs.some(pair => pair.join('') === '苹果')).toBe(true);
+  expect(new Set(replacement.activePairs.map(pair => pair.join(''))).size).toBe(6);
+  expect(replacement.freshPairs.some(pair => pair.join('') === '苹果')).toBe(false);
 
   const reconciled = reconcileReviewReplacement(
     refreshed,
@@ -151,13 +152,31 @@ test('restart refreshes baseline and deadlock replacement stays exact, solvable,
   }));
   expect(html).toContain('2 / 6');
 
-  const after = applyReviewRoundEvent(reconciled.context, reconciled.projectionBySourceKey, {
-    type: 'correct', words: ['苹果'], at: NOW,
-  });
-  expect(after.routedEvents[0].levelId).toBe('g2s1u1');
-  expect(summarizeReviewRound(reconciled.context, after.projectionBySourceKey, [
-    ['苹', '果'], ['苹', '果'], ['月', '亮'],
-  ])).toEqual({ practicedCount: 2, becameFamiliarCount: 1, revisitCount: 1 });
+  let projection = reconciled.projectionBySourceKey;
+  for (const pair of replacement.freshPairs) {
+    projection = applyReviewRoundEvent(reconciled.context, projection, {
+      type: 'correct', words: [pair.join('')], at: NOW,
+    }).projectionBySourceKey;
+  }
+  for (const pair of replacement.freshPairs) {
+    const word = pair.join('');
+    const source = reconciled.context.sourceByWord[word];
+    const key = `${source.sourceLevelId}\u0000${word}`;
+    expect(projection[key].correctCount - reconciled.projectionBySourceKey[key].correctCount).toBe(1);
+  }
+});
+
+test('undersized recovery pool is a safe no-op instead of creating duplicate-credit tiles', () => {
+  const active: [string, string][] = [['苹', '果'], ['月', '亮'], ['花', '朵']];
+  const result = computeReshuffleReplacement(
+    active,
+    new Set(['月亮', '花朵']),
+    [['苹', '果']],
+    2,
+  );
+  expect(result.freshPairs).toEqual([]);
+  expect(result.activePairs).toEqual(active);
+  expect(new Set(result.activePairs.map(pair => pair.join(''))).size).toBe(3);
 });
 
 test('final correct event is included in the frozen summary and review cannot complete curriculum', () => {

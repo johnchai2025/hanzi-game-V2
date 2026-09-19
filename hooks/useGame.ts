@@ -28,8 +28,9 @@ interface ReshuffleReplacement {
  * 判定完全按字符内容查表、不看位置，字不变，死局必然原样复现。
  * 真正能解开死局的唯一办法是把这批卡住的词换成词库里没出现过的新词。
  *
- * 优先从"本局还没抽到过"的词里换新词；真的不够用（词库太小）才退而求其次，
- * 允许拿"这局已经消除过"的词回收再来一遍——比让孩子永远卡死强。
+ * 优先从"本局还没抽到过"的词里换新词，再用合法词对重建卡住的槽位。
+ * 已保留（包括已消除）的词不会重复上场，避免同一来源被重复计分。
+ * 如果词库真的无法凑齐唯一词，保持原棋盘并让玩家重新摆放。
  *
  * 抽出的每个新词本身都是词库里真实、独立、自成一对的词，所以新换上的这批字
  * 之间必然至少存在一组有效配对；如果这次刚好又撞上小概率的二次死局，
@@ -44,30 +45,47 @@ export function computeReshuffleReplacement(
   const neededCount = Math.max(0, replacementCount);
   const usedThisRound = new Set(activePairs.map(p => p[0] + p[1]));
 
-  const spare = fullPool.filter(p => !usedThisRound.has(p[0] + p[1]));
-  let freshPairs = pickPairsForGame(spare, Math.min(neededCount, spare.length));
-
-  if (freshPairs.length < neededCount) {
-    // 词库太小，spare 不够：从"这局已经消除过"的词里回收（排除仍卡住的这几个，
-    // 避免把死局本身原样放回去）
-    const resolvedWords = new Set([...usedThisRound].filter(w => !stuckWords.has(w)));
-    const fallbackPool = fullPool.filter(p => resolvedWords.has(p[0] + p[1]));
-    freshPairs = [...freshPairs, ...pickPairsForGame(fallbackPool, neededCount - freshPairs.length)];
-  }
-
-  // A review round can deadlock before enough words have been eliminated to
-  // supply unique fallbacks. Reconstruct every stuck slot from the valid pool,
-  // cycling words when necessary. This guarantees paired cells and exact size.
-  const recoveryPool = fullPool.length > 0 ? fullPool : activePairs;
-  while (freshPairs.length < neededCount && recoveryPool.length > 0) {
-    const cycle = pickPairsForGame(recoveryPool, recoveryPool.length);
-    freshPairs.push(...cycle.slice(0, neededCount - freshPairs.length));
-  }
-
   const retainedCount = Math.max(0, activePairs.length - neededCount);
-  const retained = activePairs.filter(p => !stuckWords.has(p[0] + p[1])).slice(0, retainedCount);
-  if (retained.length < retainedCount) {
-    retained.push(...activePairs.slice(0, retainedCount - retained.length));
+  const retained: WordPair[] = [];
+  const retainedWords = new Set<string>();
+  activePairs.forEach(pair => {
+    const word = pair[0] + pair[1];
+    if (retained.length >= retainedCount || stuckWords.has(word) || retainedWords.has(word)) return;
+    retained.push(pair);
+    retainedWords.add(word);
+  });
+
+  // Prefer unused review candidates, then reconstruct the stuck words from
+  // their canonical pairs. Both pools exclude retained/eliminated words, so a
+  // recovered round never contains duplicate visible words or duplicate credit.
+  const uniquePool = (pairs: WordPair[]) => {
+    const seen = new Set(retainedWords);
+    return pairs.filter(pair => {
+      const word = pair[0] + pair[1];
+      if (!word || seen.has(word)) return false;
+      seen.add(word);
+      return true;
+    });
+  };
+  const spare = uniquePool(fullPool.filter(pair => !usedThisRound.has(pair[0] + pair[1])));
+  const selectedWords = new Set([...retainedWords, ...spare.map(pair => pair[0] + pair[1])]);
+  const reconstructable = fullPool.filter(pair => {
+    const word = pair[0] + pair[1];
+    if (!word || selectedWords.has(word)) return false;
+    selectedWords.add(word);
+    return true;
+  });
+  const candidatePool = [
+    ...pickPairsForGame(spare, spare.length),
+    ...pickPairsForGame(reconstructable, reconstructable.length),
+  ];
+  const freshPairs = candidatePool.slice(0, neededCount);
+
+  // An invalid/legacy undersized pool cannot make an exact unique round. Signal
+  // failure with an empty replacement and let the UI keep the board unchanged;
+  // restart remains available and is safer than duplicate learning credits.
+  if (retained.length !== retainedCount || freshPairs.length !== neededCount) {
+    return { activePairs: [...activePairs], freshPairs: [] };
   }
   const newActivePairs = [...retained, ...freshPairs.slice(0, neededCount)];
 
@@ -211,7 +229,7 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
       computeReshuffleReplacement(activePairs, stuckWords, fullPool, stuckLeft.length);
 
     if (freshPairs.length !== stuckLeft.length || freshPairs.length !== stuckRight.length) {
-      showFeedback('暂时找不到可换的词，请重新摆放～');
+      showFeedback('这些词还没摆好，请点“重新摆放”～');
       return;
     }
     options.onPairsReplaced?.({ activePairs: newActivePairs, replacementPairs: freshPairs });

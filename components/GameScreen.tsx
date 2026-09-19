@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import type { LevelData, CustomLevel, WordPair, WordCard } from '../types';
+import type { LevelData, CustomLevel, WordPair, WordCard, WordPractice } from '../types';
 import { CUSTOM_LEVEL_BOARD_ROWS, CUSTOM_LEVEL_BOARD_COLS } from '../types';
 import { useGame } from '../hooks/useGame';
 import { useTTS } from '../hooks/useTTS';
@@ -30,7 +30,7 @@ interface Props {
   onAddWordCard?: (card: WordCard) => void;
   onRecordWordPractice?: (levelId: string, word: string) => void;
   savedWordCards?: WordCard[];
-  practiceByLevel?: Record<string, Record<string, { correctCount: number; lastPracticedAt: number }>>;
+  practiceByLevel?: Record<string, Record<string, WordPractice>>;
   getCharacter?: () => import('../types').AnimalCharacter;
 }
 
@@ -60,8 +60,8 @@ export function GameScreen({
   const boardCols = 2;
   const currentLevelId = customLevel?.id ?? level.id;
   const completionScope = useMemo(() => ({ levelId: currentLevelId }), [currentLevelId]);
-  const practicedWords = useMemo(
-    () => new Set(Object.keys(practiceByLevel[currentLevelId] || {})),
+  const currentPractice = useMemo(
+    () => practiceByLevel[currentLevelId] || {},
     [practiceByLevel, currentLevelId]
   );
 
@@ -69,7 +69,7 @@ export function GameScreen({
   // 绝对不会重新抽样（useMemo 只要依赖项引用变化就可能重算，一旦重算就会
   // 抽出不同的随机词对，但棋盘还是旧的，会导致"明明是词却消不掉"）
   const [activePairs] = useState<WordPair[]>(() =>
-    pickPairsForPractice(customLevel?.pairs ?? level.pairs, pairCount, practicedWords)
+    pickPairsForPractice(customLevel?.pairs ?? level.pairs, pairCount, currentPractice)
   );
 
   const completedRef = useRef(false);
@@ -195,7 +195,7 @@ export function GameScreen({
     setSavedCardCount(0);
     setPairSuccess(null);
     setFlippedCells(new Set());
-    const newPairs = pickPairsForPractice(customLevel?.pairs ?? level.pairs, pairCount, practicedWords);
+    const newPairs = pickPairsForPractice(customLevel?.pairs ?? level.pairs, pairCount, currentPractice);
     restart(newPairs);
   };
 

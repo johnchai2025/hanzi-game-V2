@@ -67,6 +67,8 @@ interface UseGameOptions {
   cols?: number;
   fullPool?: WordPair[]; // 本关完整词库（不止本局抽中的这几对），死局时从里面换新词用
   onPairEliminated?: (payload: { word: string; chars: WordPair; pairId: number }) => void;
+  onPairMistake?: (payload: { words: string[] }) => void;
+  onHintUsed?: (payload: { word: string }) => void;
   onCellSelected?: (payload: { char: string; word: string }) => void;
 }
 
@@ -213,30 +215,31 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
 
     // 找到一对可组成有效词语的汉字格
     const validWords = new Set(activePairs.map(p => p[0] + p[1]));
-    const validPairs: [typeof flat[0], typeof flat[0]][] = [];
+    const validPairs: { cells: [typeof flat[0], typeof flat[0]]; word: string }[] = [];
     for (let i = 0; i < flat.length; i++) {
       for (let j = i + 1; j < flat.length; j++) {
+        if (flat[i].col === flat[j].col) continue;
         const w1 = flat[i].cell.char + flat[j].cell.char;
         const w2 = flat[j].cell.char + flat[i].cell.char;
-        if (validWords.has(w1) || validWords.has(w2)) {
-          validPairs.push([flat[i], flat[j]]);
-        }
+        const word = validWords.has(w1) ? w1 : validWords.has(w2) ? w2 : null;
+        if (word) validPairs.push({ cells: [flat[i], flat[j]], word });
       }
     }
 
     if (validPairs.length === 0) return;
     setHintCount(prev => prev + 1);
     const pick = validPairs[Math.floor(Math.random() * validPairs.length)];
+    options.onHintUsed?.({ word: pick.word });
     setCells(prev => {
       const next = prev.map(row => row.map(cell => ({ ...cell, isHinted: false })));
-      next[pick[0].row][pick[0].col].isHinted = true;
-      next[pick[1].row][pick[1].col].isHinted = true;
+      next[pick.cells[0].row][pick.cells[0].col].isHinted = true;
+      next[pick.cells[1].row][pick.cells[1].col].isHinted = true;
       return next;
     });
     setTimeout(() => {
       setCells(prev => prev.map(row => row.map(cell => ({ ...cell, isHinted: false }))));
     }, 2000);
-  }, [cells, activePairs]);
+  }, [cells, activePairs, options]);
 
   const handleCellClick = useCallback((row: number, col: number) => {
     const cell = cells[row][col];
@@ -267,7 +270,6 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
     // 双栏配词必须左右各选一个字。若点到同一栏，明确告诉孩子规则，
     // 不把第二次点击悄悄当作新的第一次选择。
     if (selected.col === col) {
-      setMistakeCount(prev => prev + 1);
       setCells(prev => {
         const next = prev.map(r => r.map(c => ({ ...c })));
         next[selected.row][selected.col].isShaking = true;
@@ -348,6 +350,7 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
       // （不能把这次失败的点击悄悄当成"新的第一次选择"，否则玩家分不清是选中了新格子
       //  还是刚才那次点击失败了）
       setMistakeCount(prev => prev + 1);
+      options.onPairMistake?.({ words: [...new Set([first.word, second.word].filter(Boolean))] });
       setCells(prev => {
         const next = prev.map(r => r.map(c => ({ ...c })));
         next[selected.row][selected.col].isShaking = true;

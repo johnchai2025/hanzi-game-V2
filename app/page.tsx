@@ -17,7 +17,7 @@ type View = 'levelselect' | 'game' | 'wordbook' | 'story';
 
 export default function Home() {
   const { levels, loading, error, reload } = useLevels();
-  const { saveData, customLevels, completeLevel, recordWordPractice, addWordCard, addStory, deleteStory, saveCustomLevel, deleteCustomLevel, incrementPlayCount, deleteWordCard } = useSaveData();
+  const { saveData, customLevels, completeLevel, recordPracticeEvent, addWordCard, addStory, deleteStory, saveCustomLevel, deleteCustomLevel, incrementPlayCount, deleteWordCard } = useSaveData();
   const { saveProfile, isSetupRequired, getCharacter, getRandomScene } = useProfile();
 
   const [view, setView] = useState<View>('levelselect');
@@ -107,7 +107,7 @@ export default function Home() {
             onIncrementPlayCount={incrementPlayCount}
             onWordBook={() => setView('wordbook')}
             onAddWordCard={handleAddWordCard}
-            onRecordWordPractice={recordWordPractice}
+            onRecordPracticeEvent={recordPracticeEvent}
             savedWordCards={saveData.wordCards}
             practiceByLevel={saveData.practiceByLevel}
             getCharacter={getCharacter}

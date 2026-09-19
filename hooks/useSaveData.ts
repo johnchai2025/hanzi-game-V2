@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { SaveData, CustomLevel, Story, WordCard } from '../types';
 import { saveImage, loadAllImages, deleteImage } from '../lib/imageStore';
-import { applyPracticeEvent, normalizeWordPractice } from '../lib/learningProgress';
+import { applyPracticeEvent, normalizeWordPractice, type PracticeEventType } from '../lib/learningProgress';
 
 const SAVE_KEY = 'hanzi-match-save';
 const CUSTOM_KEY = 'hanzi-match-custom-levels';
@@ -153,14 +153,23 @@ export function useSaveData() {
     });
   }, []);
 
-  const recordWordPractice = useCallback((levelId: string, word: string) => {
+  const recordPracticeEvent = useCallback((event: {
+    levelId: string;
+    word: string;
+    type: PracticeEventType;
+    at: number;
+  }) => {
     setSaveData(prev => {
-      const levelPractice = prev.practiceByLevel?.[levelId] || {};
+      const levelPractice = prev.practiceByLevel?.[event.levelId] || {};
       const next: SaveData = {
         ...prev,
         practiceByLevel: {
           ...(prev.practiceByLevel || {}),
-          [levelId]: applyPracticeEvent(levelPractice, { type: 'correct', words: [word] }, Date.now()),
+          [event.levelId]: applyPracticeEvent(
+            levelPractice,
+            { type: event.type, words: [event.word] },
+            event.at,
+          ),
         },
       };
       saveToLocalStorage(next);
@@ -280,7 +289,7 @@ export function useSaveData() {
     saveData,
     customLevels,
     completeLevel,
-    recordWordPractice,
+    recordPracticeEvent,
     addWordCard,
     addWordCards,
     addStory,

@@ -16,6 +16,7 @@ import { NewCardToast } from './NewCardToast';
 import { PairSuccessToast } from './PairSuccessToast';
 import { GameTutorial } from './GameTutorial';
 import { MissionScene } from './MissionScene';
+import type { PracticeEventType } from '../lib/learningProgress';
 
 interface Props {
   level: LevelData;
@@ -28,7 +29,12 @@ interface Props {
   onWordBook: () => void;
   // 新增：词卡生成相关
   onAddWordCard?: (card: WordCard) => void;
-  onRecordWordPractice?: (levelId: string, word: string) => void;
+  onRecordPracticeEvent?: (event: {
+    levelId: string;
+    word: string;
+    type: PracticeEventType;
+    at: number;
+  }) => void;
   savedWordCards?: WordCard[];
   practiceByLevel?: Record<string, Record<string, WordPractice>>;
   getCharacter?: () => import('../types').AnimalCharacter;
@@ -44,7 +50,7 @@ export function GameScreen({
   onIncrementPlayCount,
   onWordBook,
   onAddWordCard,
-  onRecordWordPractice,
+  onRecordPracticeEvent,
   savedWordCards = [],
   practiceByLevel = {},
   getCharacter,
@@ -103,13 +109,22 @@ export function GameScreen({
     };
     const isNewWord = !existingCard;
     onAddWordCard?.(card);
-    onRecordWordPractice?.(currentLevelId, word);
+    onRecordPracticeEvent?.({ levelId: currentLevelId, word, type: 'correct', at: Date.now() });
     if (isNewWord) {
       setSavedCardCount(prev => prev + 1);
       setShowNewCardToast(true);
       setTimeout(() => setShowNewCardToast(false), 1800);
     }
-  }, [currentLevelId, onAddWordCard, onRecordWordPractice, savedWordCards, speak]);
+  }, [currentLevelId, onAddWordCard, onRecordPracticeEvent, savedWordCards, speak]);
+
+  const handlePairMistake = useCallback(({ words }: { words: string[] }) => {
+    const at = Date.now();
+    words.forEach(word => onRecordPracticeEvent?.({ levelId: currentLevelId, word, type: 'wrong', at }));
+  }, [currentLevelId, onRecordPracticeEvent]);
+
+  const handleHintUsed = useCallback(({ word }: { word: string }) => {
+    onRecordPracticeEvent?.({ levelId: currentLevelId, word, type: 'hint', at: Date.now() });
+  }, [currentLevelId, onRecordPracticeEvent]);
 
   useEffect(() => () => {
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
@@ -133,7 +148,9 @@ export function GameScreen({
     cols: boardCols,
     fullPool,
     onPairEliminated: handlePairEliminated,
-  }), [boardCols, boardRows, fullPool, handlePairEliminated]);
+    onPairMistake: handlePairMistake,
+    onHintUsed: handleHintUsed,
+  }), [boardCols, boardRows, fullPool, handleHintUsed, handlePairEliminated, handlePairMistake]);
 
   const { cells, eliminatedCount, isComplete, feedback, milestone, isDeadlock, mistakeCount, hintCount, handleCellClick, showHint, restart, reshuffle } =
     useGame(level, activePairs, gameOptions);

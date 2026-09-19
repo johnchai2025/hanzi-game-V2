@@ -72,12 +72,19 @@ async function findVisibleCrossColumnMismatch(page: Page) {
     }))
   );
   const words = new Set(curriculum.units[0].pairs.map(pair => pair.join('')));
+  const intendedWord = (char: string, side: 0 | 1) => {
+    const matches = curriculum.units[0].pairs.filter(pair => pair[side] === char);
+    return matches.length === 1 ? matches[0].join('') : null;
+  };
   for (const left of cells.filter(cell => cell.id.endsWith('-0'))) {
     for (const right of cells.filter(cell => cell.id.endsWith('-1'))) {
-      if (!words.has(left.char + right.char)) {
+      const leftWord = intendedWord(left.char, 0);
+      const rightWord = intendedWord(right.char, 1);
+      if (!words.has(left.char + right.char) && leftWord && rightWord) {
         return {
           left: page.locator(`[data-cell-id="${left.id}"]`),
           right: page.locator(`[data-cell-id="${right.id}"]`),
+          intendedWords: [...new Set([leftWord, rightWord])],
         };
       }
     }
@@ -121,9 +128,106 @@ test('correct matching is immediate, non-blocking, and image-free', async ({ pag
       hasCard: save.wordCards?.some((card: { word: string; imageUrl: string }) =>
         card.word === word && card.imageUrl === ''
       ),
-      practiced: Boolean(save.practiceByLevel?.g2s1u1?.[word]),
+      practice: save.practiceByLevel?.g2s1u1?.[word],
     };
-  }, matchedWord)).toEqual({ hasCard: true, practiced: true });
+  }, matchedWord)).toMatchObject({
+    hasCard: true,
+    practice: { correctCount: 1, wrongCount: 0, hintCount: 0, correctStreak: 1 },
+  });
+});
+
+test('cross-column mismatch records each intended word once and restart does not repeat it', async ({ page }) => {
+  const priorPractice = Object.fromEntries(curriculum.units[0].pairs.map(pair => [pair.join(''), {
+    correctCount: 2,
+    wrongCount: 0,
+    hintCount: 0,
+    correctStreak: 2,
+    lastPracticedAt: 1,
+  }]));
+  await seed(page, {
+    unlockedLevels: ['g2s1u1'],
+    completedLevels: [],
+    wordCards: [],
+    stories: [],
+    practiceByLevel: { g2s1u1: priorPractice },
+    levelStars: {},
+  });
+  await enterFirstLevel(page);
+
+  const mismatch = await findVisibleCrossColumnMismatch(page);
+  await mismatch.left.click();
+  await mismatch.right.click();
+
+  await expect.poll(async () => page.evaluate(words => {
+    const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
+    return words.map(word => save.practiceByLevel?.g2s1u1?.[word]);
+  }, mismatch.intendedWords)).toEqual(mismatch.intendedWords.map(() => ({
+    correctCount: 2,
+    wrongCount: 1,
+    hintCount: 0,
+    correctStreak: 0,
+    lastPracticedAt: expect.any(Number),
+  })));
+
+  await page.getByRole('button', { name: /重新摆放/ }).click();
+  await page.waitForTimeout(100);
+  const counts = await page.evaluate(words => {
+    const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
+    return words.map(word => save.practiceByLevel.g2s1u1[word].wrongCount);
+  }, mismatch.intendedWords);
+  expect(counts).toEqual(mismatch.intendedWords.map(() => 1));
+});
+
+test('hint records exactly the revealed word once and never creates a word card', async ({ page }) => {
+  await seed(page);
+  await enterFirstLevel(page);
+
+  await page.getByRole('button', { name: /找一对给我看/ }).click();
+  await expect(page.locator('.cell-hinted')).toHaveCount(2);
+  const chars = await page.locator('.cell-hinted .cell-word').allTextContents();
+  const forward = chars.join('');
+  const backward = [...chars].reverse().join('');
+  const revealedWord = curriculum.units[0].pairs.some(pair => pair.join('') === forward)
+    ? forward
+    : backward;
+
+  await expect.poll(async () => page.evaluate(word => {
+    const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
+    return {
+      practice: save.practiceByLevel?.g2s1u1?.[word],
+      cardCount: save.wordCards?.filter((card: { word: string }) => card.word === word).length || 0,
+    };
+  }, revealedWord)).toMatchObject({
+    practice: { correctCount: 0, wrongCount: 0, hintCount: 1, correctStreak: 0 },
+    cardCount: 0,
+  });
+
+  await page.getByRole('button', { name: /重新摆放/ }).click();
+  await expect.poll(async () => page.evaluate(word => {
+    const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
+    return save.practiceByLevel.g2s1u1[word].hintCount;
+  }, revealedWord)).toBe(1);
+});
+
+test('custom rounds write learning events under the custom level id', async ({ page }) => {
+  await seed(page);
+  await page.addInitScript(level => {
+    localStorage.setItem('hanzi-match-custom-levels', JSON.stringify([level]));
+  }, CUSTOM_EIGHT_PAIR_LEVEL);
+  await page.goto('/');
+  await page.getByRole('button', { name: /我的字库/ }).click();
+  await page.getByRole('button', { name: /开始游戏/ }).click();
+
+  await page.locator('.cell-word', { hasText: '苹' }).click();
+  await page.locator('.cell-word', { hasText: '果' }).click();
+  await expect.poll(async () => page.evaluate(() => {
+    const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
+    return save.practiceByLevel?.['custom-eight-beat-layout']?.苹果;
+  })).toMatchObject({ correctCount: 1, wrongCount: 0, hintCount: 0, correctStreak: 1 });
+  expect(await page.evaluate(() => {
+    const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
+    return save.practiceByLevel?.g2s1u1?.苹果;
+  })).toBeUndefined();
 });
 
 test('mission completion waits for the final restored beat before showing its modal', async ({ page }) => {
@@ -280,9 +384,23 @@ test('same-column selections do not eliminate cells', async ({ page }) => {
   await expect(page.getByText('要从另一边找词语伙伴哦～')).toBeVisible();
   await expect(page.getByText('0 / 6')).toBeVisible();
   await expect(page.locator('.cell:not(.cell-empty)')).toHaveCount(12);
+  expect(await page.evaluate(() => {
+    const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
+    return save.practiceByLevel?.g2s1u1 || {};
+  })).toEqual({});
+
+  await page.waitForTimeout(400);
+  for (let matched = 0; matched < 6; matched += 1) {
+    const { left, right } = await findVisiblePair(page);
+    await left.click();
+    await right.click();
+    await page.waitForTimeout(310);
+  }
+  await expect(page.locator('.cmp-modal')).toBeVisible();
+  await expect(page.locator('.cmp-stars')).toHaveAttribute('aria-label', '获得3颗星');
 });
 
-test('replay selection prioritizes words absent from per-level practice', async ({ page }) => {
+test('normal selection reserves half of a six-pair round for unseen words', async ({ page }) => {
   const practicedPairs = curriculum.units[0].pairs.slice(0, 6);
   const practice = Object.fromEntries(practicedPairs.map(pair => [pair.join(''), {
     correctCount: 1,
@@ -299,11 +417,12 @@ test('replay selection prioritizes words absent from per-level practice', async 
   await enterFirstLevel(page);
 
   const visibleChars = await page.locator('.cell-word').allTextContents();
-  for (const pair of practicedPairs) {
+  const unseenVisible = curriculum.units[0].pairs.slice(6).filter(pair => {
     const hasLeft = visibleChars.some((char, index) => index % 2 === 0 && char === pair[0]);
     const hasRight = visibleChars.some((char, index) => index % 2 === 1 && char === pair[1]);
-    expect(hasLeft && hasRight).toBe(false);
-  }
+    return hasLeft && hasRight;
+  });
+  expect(unseenVisible.length).toBeGreaterThanOrEqual(3);
 });
 
 test('word book reports only words actually practiced', async ({ page }) => {

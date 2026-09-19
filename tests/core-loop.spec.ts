@@ -179,6 +179,45 @@ test('mission, board, and controls remain inside the 1024 by 768 game viewport',
   }
 });
 
+test('a built-in six-beat mission fits its supported 300px sidebar without collisions', async ({ page }) => {
+  await page.setViewportSize({ width: 780, height: 768 });
+  await seed(page);
+  await enterFirstLevel(page);
+
+  const side = page.locator('.gb-side');
+  const stage = page.locator('.mission-stage-beat-count-6');
+  await expect(stage).toBeVisible();
+  expect((await side.boundingBox())?.width).toBeGreaterThanOrEqual(300);
+
+  const stageBox = await stage.boundingBox();
+  expect(stageBox).not.toBeNull();
+  const beatBoxes = [];
+  for (const beat of await stage.locator('.mission-beat').all()) {
+    const beatBox = await beat.boundingBox();
+    expect(beatBox).not.toBeNull();
+    expect(beatBox!.x).toBeGreaterThanOrEqual(stageBox!.x);
+    expect(beatBox!.y).toBeGreaterThanOrEqual(stageBox!.y);
+    expect(beatBox!.x + beatBox!.width).toBeLessThanOrEqual(stageBox!.x + stageBox!.width);
+    expect(beatBox!.y + beatBox!.height).toBeLessThanOrEqual(stageBox!.y + stageBox!.height);
+    beatBoxes.push(beatBox!);
+  }
+
+  for (let index = 0; index < beatBoxes.length; index += 1) {
+    for (let otherIndex = index + 1; otherIndex < beatBoxes.length; otherIndex += 1) {
+      expect(
+        boxesOverlap(beatBoxes[index], beatBoxes[otherIndex]),
+        `beats ${index + 1} and ${otherIndex + 1} overlap: ${JSON.stringify([beatBoxes[index], beatBoxes[otherIndex]])}`,
+      ).toBe(false);
+    }
+  }
+
+  const mascotBox = await stage.locator('.mission-mascot').boundingBox();
+  expect(mascotBox).not.toBeNull();
+  for (const beatBox of beatBoxes) {
+    expect(boxesOverlap(beatBox, mascotBox!)).toBe(false);
+  }
+});
+
 test('a custom eight-beat mission fits its supported 300px sidebar without clipped objects', async ({ page }) => {
   await page.setViewportSize({ width: 780, height: 768 });
   await seed(page);

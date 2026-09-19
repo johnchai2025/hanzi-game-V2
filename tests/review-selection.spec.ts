@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import {
   buildReviewCandidates,
+  resolveCanonicalPracticeEntries,
   selectDailyReview,
   selectPracticePairs,
 } from '@/lib/reviewSelection';
@@ -162,4 +163,26 @@ test('visible duplicates keep priority winner, then built-in/custom/source tie o
   });
   expect(candidates.find(item => item.word === '人口')?.sourceLevelId).toBe('b-later');
   expect(candidates.find(item => item.word === '山川')?.sourceLevelId).toBe('a-custom');
+});
+
+test('shared canonical resolver prefers review priority then built-in, custom creation, and source id', () => {
+  const entries = [
+    { sourceLevelId: 'custom-familiar', word: '天地', practice: practiced({ correctStreak: 3 }), sourceKind: 'custom' as const, sourceRank: 0 },
+    { sourceLevelId: 'built-weak', word: '天地', practice: practiced({ correctStreak: 1, wrongCount: 4 }), sourceKind: 'built-in' as const, sourceRank: 1 },
+    { sourceLevelId: 'custom-tie', word: '人口', practice: practiced(), sourceKind: 'custom' as const, sourceRank: 0 },
+    { sourceLevelId: 'built-tie', word: '人口', practice: practiced(), sourceKind: 'built-in' as const, sourceRank: 3 },
+    { sourceLevelId: 'z-custom', word: '山川', practice: practiced(), sourceKind: 'custom' as const, sourceRank: 0 },
+    { sourceLevelId: 'a-custom', word: '山川', practice: practiced(), sourceKind: 'custom' as const, sourceRank: 0 },
+    { sourceLevelId: 'later-created', word: '风雨', practice: practiced(), sourceKind: 'custom' as const, sourceRank: 2 },
+    { sourceLevelId: 'earlier-created', word: '风雨', practice: practiced(), sourceKind: 'custom' as const, sourceRank: 1 },
+  ];
+
+  const winnerByWord = new Map(resolveCanonicalPracticeEntries(entries, NOW)
+    .map(entry => [entry.word, entry.sourceLevelId]));
+  expect(winnerByWord).toEqual(new Map([
+    ['天地', 'built-weak'],
+    ['人口', 'built-tie'],
+    ['山川', 'a-custom'],
+    ['风雨', 'earlier-created'],
+  ]));
 });

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { LevelData, CustomLevel, SaveData, WordCard } from '../types';
 import { STORY_CARD_MINIMUM } from '../types';
 import { getLearningStatus, normalizeWordPractice } from '../lib/learningProgress';
+import { resolveCanonicalPracticeEntries } from '../lib/reviewSelection';
 
 type TabType = 'words' | 'cards';
 type LearningFilter = 'all' | 'support' | 'familiar';
@@ -19,6 +20,7 @@ interface Props {
 export function WordBookScreen({ levels, saveData, customLevels, onStory, onDeleteCard }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>('cards');
   const [learningFilter, setLearningFilter] = useState<LearningFilter>('all');
+  const [learningNow] = useState(() => Date.now());
   const [selectedCard, setSelectedCard] = useState<WordCard | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const practiceByLevel = saveData.practiceByLevel || {};
@@ -37,14 +39,18 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
     Object.entries(byWord).filter(([, practice]) => isActuallyPracticed(practice))
       .map(([word, practice]) => ({ levelId, word, practice })),
   );
-  const uniquePracticeByWord = new Map<string, (typeof practicedEntries)[number]>();
-  practicedEntries.forEach(entry => {
-    const existing = uniquePracticeByWord.get(entry.word);
-    if (!existing || normalizeWordPractice(entry.practice).correctStreak > normalizeWordPractice(existing.practice).correctStreak) {
-      uniquePracticeByWord.set(entry.word, entry);
-    }
-  });
-  const allPracticedWords = [...uniquePracticeByWord.values()];
+  const builtInRank = new Map(levels.map((level, index) => [level.id, index]));
+  const customRank = new Map([...customLevels]
+    .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id))
+    .map((level, index) => [level.id, index]));
+  const allPracticedWords = resolveCanonicalPracticeEntries(practicedEntries.map(entry => ({
+    ...entry,
+    sourceLevelId: entry.levelId,
+    sourceKind: builtInRank.has(entry.levelId) ? 'built-in' as const
+      : customRank.has(entry.levelId) ? 'custom' as const
+        : 'other' as const,
+    sourceRank: builtInRank.get(entry.levelId) ?? customRank.get(entry.levelId) ?? 0,
+  })), learningNow);
   const canonicalEntriesByLevel = new Map<string, typeof allPracticedWords>();
   allPracticedWords.forEach(entry => {
     const entries = canonicalEntriesByLevel.get(entry.levelId) || [];
@@ -212,18 +218,21 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
               {practicedCustomLevels.length === 0 ? (
                 <div className="wordbook-empty-hint">上传词库并配对成功后将收录在这里～</div>
               ) : (
-                practicedCustomLevels.map(level => (
-                  <div key={level.id} className="wordbook-custom-group">
-                    <div className="wordbook-custom-title">{level.title}</div>
-                    <div className="wordbook-chips">
-                      {(canonicalEntriesByLevel.get(level.id) || [])
-                        .filter(({ practice }) => matchesLearningFilter(practice))
-                        .map(({ word }) => (
-                        <span key={word} className="word-chip">{word}</span>
+                practicedCustomLevels.flatMap(level => {
+                  const visibleEntries = (canonicalEntriesByLevel.get(level.id) || [])
+                    .filter(({ practice }) => matchesLearningFilter(practice));
+                  if (visibleEntries.length === 0) return [];
+                  return [(
+                    <div key={level.id} className="wordbook-custom-group">
+                      <div className="wordbook-custom-title">{level.title}</div>
+                      <div className="wordbook-chips">
+                        {visibleEntries.map(({ word }) => (
+                          <span key={word} className="word-chip">{word}</span>
                         ))}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  )];
+                })
               )}
             </div>
 

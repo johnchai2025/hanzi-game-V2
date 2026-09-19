@@ -36,6 +36,19 @@ export interface ReviewCandidate {
   priority: number;
 }
 
+export interface CanonicalPracticeEntry {
+  sourceLevelId: string;
+  word: string;
+  practice: WordPractice;
+  sourceKind: 'built-in' | 'custom' | 'other';
+  sourceRank: number;
+}
+
+export type ResolvedCanonicalPracticeEntry<T extends CanonicalPracticeEntry> = T & {
+  practice: WordPractice;
+  priority: number;
+};
+
 export interface DailyReviewSelection {
   available: boolean;
   candidates: ReviewCandidate[];
@@ -124,30 +137,48 @@ export function selectPracticePairs(
   return chosen.map(item => item.pair);
 }
 
-interface CandidateWithSourceRank extends ReviewCandidate {
-  sourceKind: 0 | 1;
-  withinKindOrder: number;
-  sourceId: string;
+const SOURCE_KIND_ORDER = { 'built-in': 0, custom: 1, other: 2 } as const;
+
+function canonicalSourceOrder(left: CanonicalPracticeEntry, right: CanonicalPracticeEntry): number {
+  return SOURCE_KIND_ORDER[left.sourceKind] - SOURCE_KIND_ORDER[right.sourceKind]
+    || left.sourceRank - right.sourceRank
+    || left.sourceLevelId.localeCompare(right.sourceLevelId);
 }
 
-function sourceTieOrder(left: CandidateWithSourceRank, right: CandidateWithSourceRank): number {
-  return left.sourceKind - right.sourceKind
-    || left.withinKindOrder - right.withinKindOrder
-    || left.sourceId.localeCompare(right.sourceId);
-}
+/**
+ * Resolve one deterministic source for every visible word. If a word has any
+ * daily-review-eligible source, its winner is chosen from that same pool;
+ * otherwise a familiar-only word still receives a stable representative.
+ */
+export function resolveCanonicalPracticeEntries<T extends CanonicalPracticeEntry>(
+  entries: readonly T[],
+  now: number,
+): Array<ResolvedCanonicalPracticeEntry<T>> {
+  const byWord = new Map<string, Array<ResolvedCanonicalPracticeEntry<T>>>();
+  entries.forEach(entry => {
+    if (!entry.word) return;
+    const resolved = {
+      ...entry,
+      practice: normalizeWordPractice(entry.practice),
+      priority: reviewPriority(entry.practice, now),
+    } as ResolvedCanonicalPracticeEntry<T>;
+    const siblings = byWord.get(entry.word) || [];
+    siblings.push(resolved);
+    byWord.set(entry.word, siblings);
+  });
 
-function shouldReplaceDuplicate(
-  current: CandidateWithSourceRank,
-  challenger: CandidateWithSourceRank,
-): boolean {
-  if (challenger.priority !== current.priority) return challenger.priority > current.priority;
-  return sourceTieOrder(challenger, current) < 0;
+  return [...byWord.values()].map(siblings => {
+    const eligible = siblings.filter(entry => entry.practice.correctStreak < 3
+      || isDueForReview(entry.practice, now));
+    return [...(eligible.length > 0 ? eligible : siblings)].sort((left, right) =>
+      right.priority - left.priority || canonicalSourceOrder(left, right))[0];
+  });
 }
 
 /** Build and visible-word-deduplicate the eligible daily review pool. */
 export function buildReviewCandidates(input: BuildReviewCandidatesInput): ReviewCandidate[] {
   const now = input.now ?? Date.now();
-  const winners = new Map<string, CandidateWithSourceRank>();
+  const entries: Array<CanonicalPracticeEntry & { pair: WordPair; sourceOrder: number }> = [];
   const customOrder = [...input.customLevels]
     .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
   const customRank = new Map(customOrder.map((source, index) => [source.id, index]));
@@ -168,20 +199,15 @@ export function buildReviewCandidates(input: BuildReviewCandidatesInput): Review
       const pair = currentWords.get(word);
       if (!stored || !pair) return;
       const practice = normalizeWordPractice(stored);
-      if (practice.correctStreak >= 3 && !isDueForReview(practice, now)) return;
-      const candidate: CandidateWithSourceRank = {
+      entries.push({
         sourceLevelId: source.id,
         word,
         pair,
         sourceOrder,
         practice,
-        priority: reviewPriority(practice, now),
-        sourceKind,
-        withinKindOrder,
-        sourceId: source.id,
-      };
-      const winner = winners.get(word);
-      if (!winner || shouldReplaceDuplicate(winner, candidate)) winners.set(word, candidate);
+        sourceKind: sourceKind === 0 ? 'built-in' : 'custom',
+        sourceRank: withinKindOrder,
+      });
     });
   };
 
@@ -193,11 +219,19 @@ export function buildReviewCandidates(input: BuildReviewCandidatesInput): Review
     visit(source, 1, rank, input.builtInLevels.length + rank);
   });
 
-  return [...winners.values()]
+  return resolveCanonicalPracticeEntries(entries, now)
+    .filter(candidate => candidate.practice.correctStreak < 3 || isDueForReview(candidate.practice, now))
     .sort((left, right) => right.priority - left.priority
       || left.practice.lastPracticedAt - right.practice.lastPracticedAt
-      || sourceTieOrder(left, right))
-    .map(({ sourceKind: _sourceKind, withinKindOrder: _withinKindOrder, sourceId: _sourceId, ...candidate }) => candidate);
+      || canonicalSourceOrder(left, right))
+    .map(candidate => ({
+      sourceLevelId: candidate.sourceLevelId,
+      word: candidate.word,
+      pair: candidate.pair,
+      sourceOrder: candidate.sourceOrder,
+      practice: candidate.practice,
+      priority: candidate.priority,
+    }));
 }
 
 /** Select the playable 2–6 word daily round from a prebuilt candidate pool. */

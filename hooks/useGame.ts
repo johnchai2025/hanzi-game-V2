@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Cell, LevelData, WordPair } from '../types';
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -135,13 +135,31 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
   const [mistakeCount, setMistakeCount] = useState(0);
   const [hintCount, setHintCount] = useState(0);
   const milestoneShownRef = useRef(false);
+  const pendingTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  const clearPendingTimers = useCallback(() => {
+    pendingTimersRef.current.forEach(timer => clearTimeout(timer));
+    pendingTimersRef.current.clear();
+  }, []);
+
+  const schedule = useCallback((callback: () => void, delay: number) => {
+    const timer = setTimeout(() => {
+      pendingTimersRef.current.delete(timer);
+      callback();
+    }, delay);
+    pendingTimersRef.current.add(timer);
+    return timer;
+  }, []);
+
+  useEffect(() => clearPendingTimers, [clearPendingTimers]);
 
   const showFeedback = useCallback((msg: string) => {
     setFeedback(msg);
-    setTimeout(() => setFeedback(null), 1500);
-  }, []);
+    schedule(() => setFeedback(null), 1500);
+  }, [schedule]);
 
   const restart = useCallback((newPairs?: WordPair[]) => {
+    clearPendingTimers();
     const nextPairs = newPairs ?? activePairs;
     setActivePairs(nextPairs);
     setCells(initBoard(nextPairs, rows, cols));
@@ -154,7 +172,7 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
     setMistakeCount(0);
     setHintCount(0);
     milestoneShownRef.current = false;
-  }, [activePairs, rows, cols]);
+  }, [activePairs, clearPendingTimers, rows, cols]);
 
   // 死局回收：不是简单打乱位置——判定完全按字符内容查表、不看行列位置，
   // 卡住的字原样挪个位置，内容没变，死局会原样复现。真正要做的是把卡住的这批
@@ -236,10 +254,10 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
       next[pick.cells[1].row][pick.cells[1].col].isHinted = true;
       return next;
     });
-    setTimeout(() => {
+    schedule(() => {
       setCells(prev => prev.map(row => row.map(cell => ({ ...cell, isHinted: false }))));
     }, 2000);
-  }, [cells, activePairs, options]);
+  }, [cells, activePairs, options, schedule]);
 
   const handleCellClick = useCallback((row: number, col: number) => {
     const cell = cells[row][col];
@@ -277,7 +295,7 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
         return next;
       });
       showFeedback('要从另一边找词语伙伴哦～');
-      setTimeout(() => {
+      schedule(() => {
         setCells(prev => prev.map(r => r.map(c => ({ ...c, isSelected: false, isShaking: false }))));
         setSelected(null);
       }, 400);
@@ -308,7 +326,7 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
       });
       setSelected(null);
 
-      setTimeout(() => {
+      schedule(() => {
         setCells(prev => {
           const next = prev.map(r => r.map(c => ({ ...c })));
           next[selected.row][selected.col].isEmpty = true;
@@ -326,13 +344,13 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
           if (next === Math.floor(activePairs.length / 2) && !milestoneShownRef.current) {
             milestoneShownRef.current = true;
             setMilestone('已经消了一半啦！继续加油 ⚡');
-            setTimeout(() => setMilestone(null), 2000);
+            schedule(() => setMilestone(null), 2000);
           }
           return next;
         });
 
         // 死局检测
-        setTimeout(() => {
+        schedule(() => {
           setCells(currentCells => {
             if (!hasValidPair(currentCells, activePairs)) {
               const remainingCount = currentCells.flat().filter(c => !c.isEmpty).length;
@@ -358,12 +376,12 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
         return next;
       });
       showFeedback('这两个字拼不成词，再试试～');
-      setTimeout(() => {
+      schedule(() => {
         setCells(prev => prev.map(r => r.map(c => ({ ...c, isSelected: false, isShaking: false }))));
         setSelected(null);
       }, 400);
     }
-  }, [cells, selected, activePairs, options, showFeedback]);
+  }, [cells, selected, activePairs, options, schedule, showFeedback]);
 
   return {
     cells,

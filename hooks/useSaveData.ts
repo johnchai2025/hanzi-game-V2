@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { SaveData, CustomLevel, Story, WordCard } from '../types';
 import { saveImage, loadAllImages, deleteImage } from '../lib/imageStore';
 import { applyPracticeEvent, normalizeWordPractice, type PracticeEventType } from '../lib/learningProgress';
@@ -100,7 +100,14 @@ function loadCustomLevelsFromStorage(): CustomLevel[] {
 
 export function useSaveData() {
   const [saveData, setSaveData] = useState<SaveData>(() => loadSaveFromStorage());
+  const persistedPracticeRef = useRef(saveData.practiceByLevel);
   const [customLevels, setCustomLevels] = useState<CustomLevel[]>(() => loadCustomLevelsFromStorage());
+
+  useEffect(() => {
+    if (persistedPracticeRef.current === saveData.practiceByLevel) return;
+    persistedPracticeRef.current = saveData.practiceByLevel;
+    saveToLocalStorage(saveData);
+  }, [saveData]);
 
   // One-time on mount: migrate legacy base64 imageUrls from localStorage → IndexedDB, then hydrate.
   // 新版 imageUrl 是服务器 URL，本来就直接躺在 localStorage 里，不用挪也不用 hydrate；
@@ -155,25 +162,23 @@ export function useSaveData() {
 
   const recordPracticeEvent = useCallback((event: {
     levelId: string;
-    word: string;
+    words: readonly string[];
     type: PracticeEventType;
     at: number;
   }) => {
-    setSaveData(prev => {
-      const levelPractice = prev.practiceByLevel?.[event.levelId] || {};
-      const next: SaveData = {
-        ...prev,
+    setSaveData(previous => {
+      const levelPractice = previous.practiceByLevel?.[event.levelId] || {};
+      return {
+        ...previous,
         practiceByLevel: {
-          ...(prev.practiceByLevel || {}),
+          ...(previous.practiceByLevel || {}),
           [event.levelId]: applyPracticeEvent(
             levelPractice,
-            { type: event.type, words: [event.word] },
+            { type: event.type, words: event.words },
             event.at,
           ),
         },
       };
-      saveToLocalStorage(next);
-      return next;
     });
   }, []);
 

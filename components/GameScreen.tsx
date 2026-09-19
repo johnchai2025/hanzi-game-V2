@@ -31,7 +31,7 @@ interface Props {
   onAddWordCard?: (card: WordCard) => void;
   onRecordPracticeEvent?: (event: {
     levelId: string;
-    word: string;
+    words: readonly string[];
     type: PracticeEventType;
     at: number;
   }) => void;
@@ -109,7 +109,7 @@ export function GameScreen({
     };
     const isNewWord = !existingCard;
     onAddWordCard?.(card);
-    onRecordPracticeEvent?.({ levelId: currentLevelId, word, type: 'correct', at: Date.now() });
+    onRecordPracticeEvent?.({ levelId: currentLevelId, words: [word], type: 'correct', at: Date.now() });
     if (isNewWord) {
       setSavedCardCount(prev => prev + 1);
       setShowNewCardToast(true);
@@ -118,12 +118,11 @@ export function GameScreen({
   }, [currentLevelId, onAddWordCard, onRecordPracticeEvent, savedWordCards, speak]);
 
   const handlePairMistake = useCallback(({ words }: { words: string[] }) => {
-    const at = Date.now();
-    words.forEach(word => onRecordPracticeEvent?.({ levelId: currentLevelId, word, type: 'wrong', at }));
+    onRecordPracticeEvent?.({ levelId: currentLevelId, words, type: 'wrong', at: Date.now() });
   }, [currentLevelId, onRecordPracticeEvent]);
 
   const handleHintUsed = useCallback(({ word }: { word: string }) => {
-    onRecordPracticeEvent?.({ levelId: currentLevelId, word, type: 'hint', at: Date.now() });
+    onRecordPracticeEvent?.({ levelId: currentLevelId, words: [word], type: 'hint', at: Date.now() });
   }, [currentLevelId, onRecordPracticeEvent]);
 
   useEffect(() => () => {

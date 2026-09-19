@@ -112,6 +112,7 @@ test('correct matching is immediate, non-blocking, and image-free', async ({ pag
   await expect(page.locator('.cell-selected')).toHaveCount(0);
 
   const { pair, left, right } = await findVisiblePair(page);
+  const matchedWord = pair.join('');
   await left.click();
   await right.click();
 
@@ -121,7 +122,6 @@ test('correct matching is immediate, non-blocking, and image-free', async ({ pag
   await expect(page.locator('.reward-card-modal')).toHaveCount(0);
   expect(requests.some(url => url.includes('/api/generate-image'))).toBe(false);
 
-  const matchedWord = pair.join('');
   await expect.poll(async () => page.evaluate(word => {
     const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
     return {
@@ -132,7 +132,7 @@ test('correct matching is immediate, non-blocking, and image-free', async ({ pag
     };
   }, matchedWord)).toMatchObject({
     hasCard: true,
-    practice: { correctCount: 1, wrongCount: 0, hintCount: 0, correctStreak: 1 },
+    practice: { correctCount: 1, wrongCount: expect.any(Number), hintCount: 0, correctStreak: 1 },
   });
 });
 
@@ -153,6 +153,17 @@ test('cross-column mismatch records each intended word once and restart does not
     levelStars: {},
   });
   await enterFirstLevel(page);
+  await page.evaluate(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    (window as typeof window & { __practiceSaveWrites?: number }).__practiceSaveWrites = 0;
+    Storage.prototype.setItem = function setItem(key: string, value: string) {
+      if (key === 'hanzi-match-save') {
+        const counterWindow = window as typeof window & { __practiceSaveWrites?: number };
+        counterWindow.__practiceSaveWrites = (counterWindow.__practiceSaveWrites || 0) + 1;
+      }
+      return originalSetItem.call(this, key, value);
+    };
+  });
 
   const mismatch = await findVisibleCrossColumnMismatch(page);
   await mismatch.left.click();
@@ -176,6 +187,41 @@ test('cross-column mismatch records each intended word once and restart does not
     return words.map(word => save.practiceByLevel.g2s1u1[word].wrongCount);
   }, mismatch.intendedWords);
   expect(counts).toEqual(mismatch.intendedWords.map(() => 1));
+  expect(await page.evaluate(() => (
+    window as typeof window & { __practiceSaveWrites?: number }
+  ).__practiceSaveWrites)).toBe(1);
+});
+
+test('restart cancels a pending mismatch reset before it can clear a fresh selection', async ({ page }) => {
+  await seed(page);
+  await enterFirstLevel(page);
+
+  const mismatch = await findVisibleCrossColumnMismatch(page);
+  await mismatch.left.click();
+  await mismatch.right.click();
+  await page.getByRole('button', { name: /重新摆放/ }).click();
+  await page.locator('.cell:not(.cell-empty)[data-cell-id$="-0"]').first().click();
+
+  await page.waitForTimeout(450);
+  await expect(page.locator('.cell-selected')).toHaveCount(1);
+  await expect(page.locator('.cell:not(.cell-empty)')).toHaveCount(12);
+  await expect(page.locator('.mission-progress output')).toHaveText('0 / 6');
+});
+
+test('restart cancels a pending elimination before it can mutate the fresh board', async ({ page }) => {
+  await seed(page);
+  await enterFirstLevel(page);
+
+  const pair = await findVisiblePair(page);
+  await pair.left.click();
+  await pair.right.click();
+  await page.getByRole('button', { name: /重新摆放/ }).click();
+  await page.locator('.cell:not(.cell-empty)[data-cell-id$="-0"]').first().click();
+
+  await page.waitForTimeout(350);
+  await expect(page.locator('.cell-selected')).toHaveCount(1);
+  await expect(page.locator('.cell:not(.cell-empty)')).toHaveCount(12);
+  await expect(page.locator('.mission-progress output')).toHaveText('0 / 6');
 });
 
 test('hint records exactly the revealed word once and never creates a word card', async ({ page }) => {

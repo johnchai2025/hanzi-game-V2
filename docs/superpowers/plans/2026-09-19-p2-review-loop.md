@@ -263,26 +263,28 @@ Commit: `feat: show learning progress feedback`
 **Files:**
 - Modify only files needed to resolve verified failures.
 
-- [ ] **Step 1: Run static and automated checks**
+- [x] **Step 1: Run static and automated checks**
 
 Run scoped ESLint, `npx tsc --noEmit`, and `npm test`.
 
 Expected: zero new lint/type errors and all tests pass.
 
-- [ ] **Step 2: Run production build**
+- [x] **Step 2: Run production build**
 
 Run: `npm run build`
 
 Expected: successful Next.js production build.
 
-- [ ] **Step 3: Inspect representative states**
+- [x] **Step 3: Inspect representative states**
 
 Visually inspect ready/empty entry, review with two and six pairs, normal mixed selection, completion summary, all three word-book filters, 1024×768, 1180×760, and reduced motion.
 
-- [ ] **Step 4: Verify regression boundaries**
+- [x] **Step 4: Verify regression boundaries**
 
 Confirm curriculum/custom completion, stars, mission scene, 700ms modal delay, speech, cards, story, hint, restart, deadlock, save migration, and no image-generation request from gameplay.
 
-- [ ] **Step 5: Prepare V2 handoff**
+- [x] **Step 5: Prepare V2 handoff**
 
 Commit approved documentation and code, request user testing, then merge/push `main` to `v2` only after acceptance.
+
+Verification completed on 2026-09-20: 62/62 tests pass, TypeScript and production build pass, the approved B entry and representative 2/6-word review flows fit the supported iPad landscape viewport, and the final whole-feature review is approved. Awaiting user acceptance before merging and pushing `v2/main`.

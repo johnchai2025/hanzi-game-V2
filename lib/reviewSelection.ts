@@ -4,6 +4,7 @@ import type { WordPair, WordPractice } from '@/types';
 export interface SelectionOptions {
   now?: number;
   random?: () => number;
+  sourceOrder?: (pair: WordPair, index: number) => number;
 }
 
 export interface BuiltInReviewSource {
@@ -52,14 +53,14 @@ interface RankedPair {
 function comparePriority(left: RankedPair, right: RankedPair): number {
   return right.priority - left.priority
     || (left.practice?.lastPracticedAt ?? 0) - (right.practice?.lastPracticedAt ?? 0)
-    || left.tieBreaker - right.tieBreaker
-    || left.sourceOrder - right.sourceOrder;
+    || left.sourceOrder - right.sourceOrder
+    || left.tieBreaker - right.tieBreaker;
 }
 
 function compareOldest(left: RankedPair, right: RankedPair): number {
   return (left.practice?.lastPracticedAt ?? 0) - (right.practice?.lastPracticedAt ?? 0)
-    || left.tieBreaker - right.tieBreaker
-    || left.sourceOrder - right.sourceOrder;
+    || left.sourceOrder - right.sourceOrder
+    || left.tieBreaker - right.tieBreaker;
 }
 
 /**
@@ -77,10 +78,11 @@ export function selectPracticePairs(
 
   const now = options.now ?? Date.now();
   const random = options.random ?? Math.random;
+  const getSourceOrder = options.sourceOrder ?? ((_pair: WordPair, index: number) => index);
   const seenWords = new Set<string>();
   const ranked: RankedPair[] = [];
 
-  allPairs.forEach((pair, sourceOrder) => {
+  allPairs.forEach((pair, index) => {
     const word = pair.join('');
     if (!word || seenWords.has(word)) return;
     seenWords.add(word);
@@ -88,7 +90,7 @@ export function selectPracticePairs(
     ranked.push({
       pair,
       word,
-      sourceOrder,
+      sourceOrder: getSourceOrder(pair, index),
       practice: stored ? normalizeWordPractice(stored) : undefined,
       priority: reviewPriority(stored, now),
       tieBreaker: random(),

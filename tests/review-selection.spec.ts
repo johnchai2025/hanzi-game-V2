@@ -65,7 +65,7 @@ test('short category quotas refill from unseen, then weak/due, then maintenance'
     .toEqual(['甲乙', '丙丁', '戊己', '南北', '东西', '庚辛', '秋冬', '春夏']);
 });
 
-test('seven whole days adds exactly five priority points and random only breaks exact ties', () => {
+test('seven whole days adds five points and stable source order precedes random', () => {
   const all = ['风雨', '山川', '花草'].map(pair);
   const practice = {
     风雨: practiced({ correctStreak: 3, lastPracticedAt: NOW - 7 * DAY }),
@@ -80,7 +80,22 @@ test('seven whole days adds exactly five priority points and random only breaks 
 
   expect(reviewPriority(practice.风雨, NOW)).toBe(105);
   expect(reviewPriority(practice.山川, NOW)).toBe(100);
-  expect(words(selected)).toEqual(['风雨', '花草', '山川']);
+  expect(words(selected)).toEqual(['风雨', '山川', '花草']);
+});
+
+test('injected random breaks ties only when priority, age, and source order all tie', () => {
+  const all = ['山川', '花草'].map(pair);
+  const practice = {
+    山川: practiced({ correctStreak: 3, lastPracticedAt: NOW - 6 * DAY }),
+    花草: practiced({ correctStreak: 3, lastPracticedAt: NOW - 6 * DAY }),
+  };
+  const randomValues = [0.9, 0.1];
+
+  expect(words(selectPracticePairs(all, 2, practice, {
+    now: NOW,
+    sourceOrder: () => 0,
+    random: () => randomValues.shift() ?? 0.5,
+  }))).toEqual(['花草', '山川']);
 });
 
 test('daily candidates filter invalid sources and recent familiar words', () => {

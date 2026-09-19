@@ -38,12 +38,13 @@ function practiceAt(
 export function createReviewContext(
   candidates: readonly ReviewCandidate[],
   practiceByLevel: SaveData['practiceByLevel'],
+  replacementCandidates: readonly ReviewCandidate[] = candidates,
 ): ReviewContext {
   const sourceByWord: ReviewContext['sourceByWord'] = {};
   const baselineBySourceKey: ReviewContext['baselineBySourceKey'] = {};
   const pairs: WordPair[] = [];
 
-  candidates.forEach(candidate => {
+  replacementCandidates.forEach(candidate => {
     if (sourceByWord[candidate.word]) return;
     sourceByWord[candidate.word] = {
       sourceLevelId: candidate.sourceLevelId,
@@ -55,6 +56,10 @@ export function createReviewContext(
       candidate.word,
       candidate.practice,
     );
+  });
+
+  candidates.forEach(candidate => {
+    if (pairs.some(pair => pair.join('') === candidate.word)) return;
     pairs.push(candidate.pair);
   });
 
@@ -68,8 +73,43 @@ export function createReviewContext(
       boardRows: pairs.length,
       boardCols: 2,
     },
+    replacementPairs: Object.values(sourceByWord).map(source => {
+      const candidate = replacementCandidates.find(item =>
+        item.sourceLevelId === source.sourceLevelId && item.word === source.word);
+      return candidate?.pair ?? [source.word[0], source.word[1]];
+    }),
     sourceByWord,
     baselineBySourceKey,
+  };
+}
+
+/**
+ * Reconcile replacement words before useGame installs their cells. All words
+ * must come from the valid, deduplicated review pool captured in the context.
+ */
+export function reconcileReviewReplacement(
+  context: ReviewContext,
+  projectionBySourceKey: Readonly<Record<string, WordPractice>>,
+  replacementPairs: readonly WordPair[],
+  practiceByLevel: SaveData['practiceByLevel'],
+): { context: ReviewContext; projectionBySourceKey: Record<string, WordPractice> } {
+  const baselineBySourceKey = { ...context.baselineBySourceKey };
+  const projection = { ...projectionBySourceKey };
+  replacementPairs.forEach(pair => {
+    const word = pair.join('');
+    const source = context.sourceByWord[word];
+    if (!source) throw new Error(`Review replacement has no source: ${word}`);
+    const key = reviewSourceKey(source.sourceLevelId, source.word);
+    baselineBySourceKey[key] = baselineBySourceKey[key] ?? practiceAt(
+      practiceByLevel,
+      source.sourceLevelId,
+      source.word,
+    );
+    projection[key] = projection[key] ?? baselineBySourceKey[key];
+  });
+  return {
+    context: { ...context, baselineBySourceKey },
+    projectionBySourceKey: projection,
   };
 }
 

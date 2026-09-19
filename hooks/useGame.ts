@@ -38,9 +38,10 @@ interface ReshuffleReplacement {
 export function computeReshuffleReplacement(
   activePairs: WordPair[],
   stuckWords: Set<string>,
-  fullPool: WordPair[]
+  fullPool: WordPair[],
+  replacementCount = stuckWords.size,
 ): ReshuffleReplacement {
-  const neededCount = stuckWords.size;
+  const neededCount = Math.max(0, replacementCount);
   const usedThisRound = new Set(activePairs.map(p => p[0] + p[1]));
 
   const spare = fullPool.filter(p => !usedThisRound.has(p[0] + p[1]));
@@ -54,10 +55,21 @@ export function computeReshuffleReplacement(
     freshPairs = [...freshPairs, ...pickPairsForGame(fallbackPool, neededCount - freshPairs.length)];
   }
 
-  const newActivePairs = [
-    ...activePairs.filter(p => !stuckWords.has(p[0] + p[1])),
-    ...freshPairs,
-  ];
+  // A review round can deadlock before enough words have been eliminated to
+  // supply unique fallbacks. Reconstruct every stuck slot from the valid pool,
+  // cycling words when necessary. This guarantees paired cells and exact size.
+  const recoveryPool = fullPool.length > 0 ? fullPool : activePairs;
+  while (freshPairs.length < neededCount && recoveryPool.length > 0) {
+    const cycle = pickPairsForGame(recoveryPool, recoveryPool.length);
+    freshPairs.push(...cycle.slice(0, neededCount - freshPairs.length));
+  }
+
+  const retainedCount = Math.max(0, activePairs.length - neededCount);
+  const retained = activePairs.filter(p => !stuckWords.has(p[0] + p[1])).slice(0, retainedCount);
+  if (retained.length < retainedCount) {
+    retained.push(...activePairs.slice(0, retainedCount - retained.length));
+  }
+  const newActivePairs = [...retained, ...freshPairs.slice(0, neededCount)];
 
   return { activePairs: newActivePairs, freshPairs };
 }
@@ -70,6 +82,7 @@ interface UseGameOptions {
   onPairMistake?: (payload: { words: string[] }) => void;
   onHintUsed?: (payload: { word: string }) => void;
   onCellSelected?: (payload: { char: string; word: string }) => void;
+  onPairsReplaced?: (payload: { activePairs: WordPair[]; replacementPairs: WordPair[] }) => void;
 }
 
 /**
@@ -195,7 +208,13 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
     }
 
     const { activePairs: newActivePairs, freshPairs } =
-      computeReshuffleReplacement(activePairs, stuckWords, fullPool);
+      computeReshuffleReplacement(activePairs, stuckWords, fullPool, stuckLeft.length);
+
+    if (freshPairs.length !== stuckLeft.length || freshPairs.length !== stuckRight.length) {
+      showFeedback('暂时找不到可换的词，请重新摆放～');
+      return;
+    }
+    options.onPairsReplaced?.({ activePairs: newActivePairs, replacementPairs: freshPairs });
 
     // 新词分别独立打乱后，按栏位填回原本卡住的那些格子位置
     const shuffledForLeft = shuffleArray(freshPairs);
@@ -221,7 +240,7 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
     // 情况，死局弹窗不会再出现，孩子会在毫无提示的情况下第二次卡死。
     setIsDeadlock(!hasValidPair(nextCells, newActivePairs));
     showFeedback('换了几个新词，再试试！');
-  }, [cells, activePairs, fullPool, showFeedback]);
+  }, [cells, activePairs, fullPool, options, showFeedback]);
 
   const showHint = useCallback(() => {
     const flat: { cell: Cell; row: number; col: number }[] = [];

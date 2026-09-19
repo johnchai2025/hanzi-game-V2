@@ -21,6 +21,7 @@ import {
   allowsCurriculumCompletion,
   applyReviewRoundEvent,
   refreshReviewContext,
+  reconcileReviewReplacement,
   summarizeReviewRound,
 } from '../lib/reviewRound';
 
@@ -177,7 +178,21 @@ export function GameScreen({
 
   // 死局时"重新打乱"要从完整词库（不止本局抽中的这几对）里换新词，
   // 自定义关卡的完整词库是 customLevel.pairs，不是 level（那只是占位用的第一关）
-  const fullPool = mode === 'review' ? level.pairs : customLevel ? customLevel.pairs : level.pairs;
+  const fullPool = mode === 'review'
+    ? reviewContext?.replacementPairs ?? level.pairs
+    : customLevel ? customLevel.pairs : level.pairs;
+
+  const handlePairsReplaced = useCallback(({ replacementPairs }: { replacementPairs: WordPair[] }) => {
+    if (mode !== 'review' || !reviewContextRef.current) return;
+    const reconciled = reconcileReviewReplacement(
+      reviewContextRef.current,
+      reviewProjectionRef.current,
+      replacementPairs,
+      practiceByLevel,
+    );
+    reviewContextRef.current = reconciled.context;
+    reviewProjectionRef.current = reconciled.projectionBySourceKey;
+  }, [mode, practiceByLevel]);
 
   const gameOptions = useMemo(() => ({
     rows: boardRows,
@@ -186,7 +201,8 @@ export function GameScreen({
     onPairEliminated: handlePairEliminated,
     onPairMistake: handlePairMistake,
     onHintUsed: handleHintUsed,
-  }), [boardCols, boardRows, fullPool, handleHintUsed, handlePairEliminated, handlePairMistake]);
+    onPairsReplaced: handlePairsReplaced,
+  }), [boardCols, boardRows, fullPool, handleHintUsed, handlePairEliminated, handlePairMistake, handlePairsReplaced]);
 
   const { activePairs, cells, eliminatedCount, isComplete, feedback, milestone, isDeadlock, mistakeCount, hintCount, handleCellClick, showHint, restart, reshuffle } =
     useGame(level, initialPairs, gameOptions);

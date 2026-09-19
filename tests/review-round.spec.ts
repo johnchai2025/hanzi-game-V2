@@ -5,9 +5,11 @@ import {
   allowsCurriculumCompletion,
   applyReviewRoundEvent,
   createReviewContext,
+  reconcileReviewReplacement,
   refreshReviewContext,
   summarizeReviewRound,
 } from '@/lib/reviewRound';
+import { computeReshuffleReplacement } from '@/hooks/useGame';
 import type { ReviewCandidate } from '@/lib/reviewSelection';
 import type { WordPractice } from '@/types';
 
@@ -87,14 +89,27 @@ test('review context supports exact two and six pair missions', () => {
       character: { animal: '小狐狸', emoji: '🦊', name: '团团' },
     }));
     expect(html).toContain(`${count} / ${count}`);
+    expect(html).toContain(`mission-stage-beat-count-${count}`);
+    expect((html.match(/class="mission-beat /g) ?? [])).toHaveLength(count);
   }
 });
 
-test('restart refreshes baseline and deadlock reuse keeps authoritative source metadata', () => {
-  const chosen = [candidate('g2s1u1', '苹果', 1), candidate('g2s1u2', '月亮', 2)];
+test('restart refreshes baseline and deadlock replacement stays exact, solvable, and source-backed', () => {
+  const chosen = [
+    candidate('g2s1u1', '苹果', 1),
+    candidate('g2s1u2', '月亮', 2),
+    candidate('g2s1u3', '花朵', 1),
+    candidate('g2s1u4', '天空', 1),
+    candidate('g2s1u5', '书包', 1),
+    candidate('g2s1u6', '铅笔', 1),
+  ];
   const context = createReviewContext(chosen, {
     g2s1u1: { 苹果: practice(1) },
     g2s1u2: { 月亮: practice(2) },
+    g2s1u3: { 花朵: practice(1) },
+    g2s1u4: { 天空: practice(1) },
+    g2s1u5: { 书包: practice(1) },
+    g2s1u6: { 铅笔: practice(1) },
   });
   const refreshed = refreshReviewContext(context, {
     g2s1u1: { 苹果: practice(2) },
@@ -102,13 +117,45 @@ test('restart refreshes baseline and deadlock reuse keeps authoritative source m
   });
   expect(refreshed.baselineBySourceKey['g2s1u1\u0000苹果'].correctStreak).toBe(2);
 
-  // A deadlock replacement may reuse an already-eliminated visible word. Its
-  // source remains the selected winner and summary counts distinct final words.
-  const after = applyReviewRoundEvent(refreshed, refreshed.baselineBySourceKey, {
+  // Four stuck slots but only two eliminated words reproduces the old
+  // undersized fallback. Recovery must reuse valid words to fill all slots.
+  const stuckWords = new Set(['花朵', '天空', '书包', '铅笔']);
+  const replacement = computeReshuffleReplacement(
+    context.level.pairs,
+    stuckWords,
+    context.replacementPairs,
+    4,
+  );
+  expect(replacement.freshPairs).toHaveLength(4);
+  expect(replacement.activePairs).toHaveLength(6);
+  expect(replacement.freshPairs.some(pair => pair.join('') === '苹果')).toBe(true);
+
+  const reconciled = reconcileReviewReplacement(
+    refreshed,
+    refreshed.baselineBySourceKey,
+    replacement.freshPairs,
+    {},
+  );
+  for (const pair of replacement.freshPairs) {
+    expect(reconciled.context.sourceByWord[pair.join('')]).toBeDefined();
+    expect(reconciled.projectionBySourceKey[
+      `${reconciled.context.sourceByWord[pair.join('')].sourceLevelId}\u0000${pair.join('')}`
+    ]).toBeDefined();
+  }
+  const html = renderToStaticMarkup(createElement(MissionScene, {
+    levelId: context.level.id,
+    levelTitle: context.level.title,
+    restoredCount: 2,
+    totalCount: replacement.activePairs.length,
+    character: { animal: '小狐狸', emoji: '🦊', name: '团团' },
+  }));
+  expect(html).toContain('2 / 6');
+
+  const after = applyReviewRoundEvent(reconciled.context, reconciled.projectionBySourceKey, {
     type: 'correct', words: ['苹果'], at: NOW,
   });
   expect(after.routedEvents[0].levelId).toBe('g2s1u1');
-  expect(summarizeReviewRound(refreshed, after.projectionBySourceKey, [
+  expect(summarizeReviewRound(reconciled.context, after.projectionBySourceKey, [
     ['苹', '果'], ['苹', '果'], ['月', '亮'],
   ])).toEqual({ practicedCount: 2, becameFamiliarCount: 1, revisitCount: 1 });
 });

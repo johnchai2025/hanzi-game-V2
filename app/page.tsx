@@ -48,7 +48,7 @@ export default function Home() {
     });
     const selection = selectDailyReview(candidates);
     if (!selection.available) return;
-    const context = createReviewContext(selection.candidates, saveData.practiceByLevel);
+    const context = createReviewContext(selection.candidates, saveData.practiceByLevel, candidates);
     const timer = window.setTimeout(() => {
       if (reviewBootstrapRef.current) return;
       reviewBootstrapRef.current = true;

@@ -87,6 +87,7 @@ export interface ReviewWordSource {
 
 export interface ReviewContext {
   level: LevelData;
+  replacementPairs: WordPair[];
   sourceByWord: Record<string, ReviewWordSource>;
   baselineBySourceKey: Record<string, WordPractice>;
 }

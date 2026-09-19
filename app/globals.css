@@ -2508,6 +2508,9 @@ a { color: inherit; text-decoration: none; }
   .gb-side-head .gb-lvl { font-size: 1.18rem; }
   .gb-side .mission-scene { padding: 10px; }
   .gb-side .mission-stage { height: 192px; }
+  /* The compact eight-beat arrangement uses a third row above the mascot.
+     Keep its full theatre height so the lower rows cannot overlap. */
+  .gb-side .mission-stage-beat-count-8 { height: 224px; }
   .gb-ctrls { gap: 8px; }
   .gb-ctrls .btn-big { padding: 11px 18px; font-size: 1rem; }
 }

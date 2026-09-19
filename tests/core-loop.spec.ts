@@ -17,6 +17,17 @@ const CUSTOM_EIGHT_PAIR_LEVEL = {
   playCount: 0,
 };
 
+function boxesOverlap(
+  first: { x: number; y: number; width: number; height: number },
+  second: { x: number; y: number; width: number; height: number },
+  tolerance = 1,
+) {
+  return (
+    Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x) > tolerance
+    && Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y) > tolerance
+  );
+}
+
 async function seed(page: Page, save?: object, tutorialDone = true) {
   await page.addInitScript(({ profile, saved, dismissTutorial }) => {
     localStorage.setItem('hanziGame_profile', JSON.stringify(profile));
@@ -185,6 +196,7 @@ test('a custom eight-beat mission fits its supported 300px sidebar without clipp
 
   const stageBox = await stage.boundingBox();
   expect(stageBox).not.toBeNull();
+  const beatBoxes = [];
   for (const beat of await stage.locator('.mission-beat').all()) {
     const beatBox = await beat.boundingBox();
     expect(beatBox).not.toBeNull();
@@ -192,6 +204,19 @@ test('a custom eight-beat mission fits its supported 300px sidebar without clipp
     expect(beatBox!.y).toBeGreaterThanOrEqual(stageBox!.y);
     expect(beatBox!.x + beatBox!.width).toBeLessThanOrEqual(stageBox!.x + stageBox!.width);
     expect(beatBox!.y + beatBox!.height).toBeLessThanOrEqual(stageBox!.y + stageBox!.height);
+    beatBoxes.push(beatBox!);
+  }
+
+  for (let index = 0; index < beatBoxes.length; index += 1) {
+    for (let otherIndex = index + 1; otherIndex < beatBoxes.length; otherIndex += 1) {
+      expect(boxesOverlap(beatBoxes[index], beatBoxes[otherIndex])).toBe(false);
+    }
+  }
+
+  const mascotBox = await stage.locator('.mission-mascot').boundingBox();
+  expect(mascotBox).not.toBeNull();
+  for (const beatBox of beatBoxes) {
+    expect(boxesOverlap(beatBox, mascotBox!)).toBe(false);
   }
 });
 

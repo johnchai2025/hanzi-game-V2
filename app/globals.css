@@ -2488,7 +2488,7 @@ a { color: inherit; text-decoration: none; }
 .custom-modal-close { position: absolute; top: 12px; right: 12px; z-index: 2; }
 
 /* ===================== 03 棋盘：横屏（盘 + 侧栏） ===================== */
-.gb { flex: 1; min-height: 0; display: flex; gap: clamp(20px, 3vw, 40px);
+.gb { flex: 1; min-height: 0; display: flex; gap: clamp(16px, 3vw, 40px);
   align-items: center; justify-content: center;
   padding: calc(16px + env(safe-area-inset-top)) clamp(24px, 4vw, 56px) 24px;
   background: linear-gradient(180deg, #fff3df, #ffe6c4); }
@@ -2496,17 +2496,21 @@ a { color: inherit; text-decoration: none; }
 .gb-back { align-self: flex-start; background: rgba(255,255,255,0.7); border: none; border-radius: 999px; padding: 6px 15px; color: #8a5a24; font-family: var(--font-round); font-size: 0.85rem; cursor: pointer; }
 .gb-board { width: min(50vw, 380px); max-width: 380px; }
 .gb-board .cell-word { font-size: clamp(18px, 2.4vw, 28px); }
-.gb-side { flex: 0 1 420px; max-width: 460px; min-width: 300px; display: flex; flex-direction: column; gap: 14px; }
+.gb-side { flex: 0 1 420px; max-width: 460px; min-width: 300px; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
 .gb-side-head .gb-lvl { font-family: var(--font-round); font-size: 1.35rem; color: #5a3a18; }
 .gb-side-head .gb-lvl-sub { font-size: 0.8rem; color: #9a6a3a; margin-top: 1px; }
-.gb-mascot-card { background: #fff; border-radius: 18px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 4px 12px rgba(180,120,60,0.15); }
-.gb-mascot-card .speech { flex: 1; }
-.gb-prog { background: #fff; border-radius: 16px; padding: 12px 14px; box-shadow: 0 4px 12px rgba(180,120,60,0.12); }
-.gb-prog-row { display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: #8a5a2a; font-size: 0.85rem; margin-bottom: 8px; }
-.gb-prog-track { height: 12px; background: #f1ddc0; border-radius: 8px; overflow: hidden; }
-.gb-prog-fill { height: 100%; background: linear-gradient(90deg, #f97316, #fbbf24); border-radius: 8px; transition: width 0.3s; }
 .gb-combo { align-self: flex-start; background: linear-gradient(135deg, #ffd166, #ff8a3d); color: #7a3a00; font-family: var(--font-round); font-weight: 800; border-radius: 999px; padding: 7px 16px; box-shadow: 0 3px 10px rgba(255,140,40,0.4); font-size: 0.9rem; }
-.gb-ctrls { display: flex; flex-direction: column; gap: 12px; margin-top: auto; }
+.gb-ctrls { display: flex; flex-direction: column; flex-shrink: 0; gap: 12px; margin-top: auto; }
+
+@media (max-height: 800px) {
+  .gb { align-items: stretch; padding-top: 12px; padding-bottom: 12px; }
+  .gb-side { gap: 9px; }
+  .gb-side-head .gb-lvl { font-size: 1.18rem; }
+  .gb-side .mission-scene { padding: 10px; }
+  .gb-side .mission-stage { height: 192px; }
+  .gb-ctrls { gap: 8px; }
+  .gb-ctrls .btn-big { padding: 11px 18px; font-size: 1rem; }
+}
 
 /* ===================== 04/05 弹窗（横屏过关 / 奖卡） ===================== */
 .cmp-modal { background: #fff; border-radius: 28px; max-width: 384px; width: 100%; padding: 18px 28px 24px; text-align: center; box-shadow: 0 24px 60px rgba(0,0,0,0.32); }

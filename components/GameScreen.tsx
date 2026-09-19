@@ -13,9 +13,9 @@ import { MilestoneToast } from './MilestoneToast';
 import { CompletionModal } from './CompletionModal';
 import { DeadlockModal } from './DeadlockModal';
 import { NewCardToast } from './NewCardToast';
-import { MascotImg } from './MascotImg';
 import { PairSuccessToast } from './PairSuccessToast';
 import { GameTutorial } from './GameTutorial';
+import { MissionScene } from './MissionScene';
 
 interface Props {
   level: LevelData;
@@ -59,6 +59,7 @@ export function GameScreen({
   const boardRows = pairCount;
   const boardCols = 2;
   const currentLevelId = customLevel?.id ?? level.id;
+  const completionScope = useMemo(() => ({ levelId: currentLevelId }), [currentLevelId]);
   const practicedWords = useMemo(
     () => new Set(Object.keys(practiceByLevel[currentLevelId] || {})),
     [practiceByLevel, currentLevelId]
@@ -72,6 +73,10 @@ export function GameScreen({
   );
 
   const completedRef = useRef(false);
+  const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completionLevelRef = useRef(currentLevelId);
+  const wasCompleteRef = useRef(false);
+  const [completionReady, setCompletionReady] = useState<{ levelId: string; scope: object } | null>(null);
   const [showNewCardToast, setShowNewCardToast] = useState(false);
   const [savedCardCount, setSavedCardCount] = useState(0);
   const [pairSuccess, setPairSuccess] = useState<{ word: string; chars: WordPair } | null>(null);
@@ -110,6 +115,15 @@ export function GameScreen({
     if (successTimerRef.current) clearTimeout(successTimerRef.current);
   }, []);
 
+  const clearCompletionTimer = useCallback(() => {
+    if (completionTimerRef.current) {
+      clearTimeout(completionTimerRef.current);
+      completionTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearCompletionTimer(), [clearCompletionTimer]);
+
   // 死局时"重新打乱"要从完整词库（不止本局抽中的这几对）里换新词，
   // 自定义关卡的完整词库是 customLevel.pairs，不是 level（那只是占位用的第一关）
   const fullPool = customLevel ? customLevel.pairs : level.pairs;
@@ -125,18 +139,44 @@ export function GameScreen({
     useGame(level, activePairs, gameOptions);
   const earnedStars = calculateStars({ mistakeCount, hintCount });
 
-  // 监听关卡完成
+  // 完成存档与完成弹窗是两件事：存档立即完成，而弹窗等最后一个任务物件出现后再展示。
+  // currentLevelId 变化时即使组件没有卸载，也不能让旧关卡的计时器盖住新关卡。
   useEffect(() => {
-    if (isComplete && !completedRef.current) {
-      completedRef.current = true;
-      if (!customLevel) {
-        onComplete(level.id, nextLevel?.id ?? null, earnedStars);
-      } else if (onIncrementPlayCount) {
-        onIncrementPlayCount(customLevel.id);
-      }
-
+    if (completionLevelRef.current !== currentLevelId) {
+      completionLevelRef.current = currentLevelId;
+      completedRef.current = false;
+      wasCompleteRef.current = isComplete;
+      clearCompletionTimer();
+      return;
     }
-  }, [isComplete, level, nextLevel, customLevel, onComplete, onIncrementPlayCount, earnedStars]);
+
+    if (!isComplete) {
+      wasCompleteRef.current = false;
+      clearCompletionTimer();
+      return;
+    }
+
+    if (wasCompleteRef.current || completedRef.current) return;
+
+    wasCompleteRef.current = true;
+    completedRef.current = true;
+    if (!customLevel) {
+      onComplete(level.id, nextLevel?.id ?? null, earnedStars);
+    } else if (onIncrementPlayCount) {
+      onIncrementPlayCount(customLevel.id);
+    }
+
+    const completedLevelId = currentLevelId;
+    completionTimerRef.current = setTimeout(() => {
+      if (
+        completionLevelRef.current === completedLevelId
+        && completedRef.current
+      ) {
+        setCompletionReady({ levelId: completedLevelId, scope: completionScope });
+      }
+      completionTimerRef.current = null;
+    }, 700);
+  }, [isComplete, currentLevelId, completionScope, level, nextLevel, customLevel, onComplete, onIncrementPlayCount, earnedStars, clearCompletionTimer]);
 
   const handleFlipCell = useCallback((cellId: string) => {
     setFlippedCells(prev => {
@@ -148,7 +188,10 @@ export function GameScreen({
   }, []);
 
   const handleRestart = () => {
+    clearCompletionTimer();
     completedRef.current = false;
+    wasCompleteRef.current = false;
+    setCompletionReady(null);
     setSavedCardCount(0);
     setPairSuccess(null);
     setFlippedCells(new Set());
@@ -161,15 +204,7 @@ export function GameScreen({
   };
 
   const character = getCharacter?.() ?? { animal: '小狐狸', emoji: '🦊', name: '小狐狸' };
-  const progress = activePairs.length > 0 ? Math.round((eliminatedCount / activePairs.length) * 100) : 0;
   const title = customLevel ? customLevel.title : level.title;
-  const mascotMsg = (() => {
-    if (progress >= 100) return '全部消完啦！🎉';
-    if (eliminatedCount === 0) return '左右各选一个字，组成词语吧！';
-    if (eliminatedCount >= 4) return `超厉害！${character.name}为你跳舞啦～`;
-    if (eliminatedCount >= 2) return '连消达人！继续冲！';
-    return '太棒了！继续加油！';
-  })();
 
   return (
     <div className="gb">
@@ -186,20 +221,13 @@ export function GameScreen({
           <div className="gb-lvl-sub">左右各选一个字，组成词语～</div>
         </div>
 
-        <div className="gb-mascot-card">
-          <MascotImg animal={character.animal} emoji={character.emoji} className="mascot-img-sm" />
-          <div className="speech">{mascotMsg}</div>
-        </div>
-
-        <div className="gb-prog">
-          <div className="gb-prog-row">
-            <span>闯关进度</span>
-            <span>{eliminatedCount} / {activePairs.length}</span>
-          </div>
-          <div className="gb-prog-track">
-            <div className="gb-prog-fill" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
+        <MissionScene
+          levelId={currentLevelId}
+          levelTitle={title}
+          restoredCount={eliminatedCount}
+          totalCount={activePairs.length}
+          character={character}
+        />
 
         <div className="gb-ctrls">
           <button className="btn btn-hint btn-big btn-block" onClick={showHint}>💡 找一对给我看</button>
@@ -212,7 +240,7 @@ export function GameScreen({
       <NewCardToast count={savedCardCount} show={showNewCardToast} />
       <PairSuccessToast payload={pairSuccess} />
 
-      {isComplete && (
+      {completionReady?.levelId === currentLevelId && completionReady.scope === completionScope && isComplete && (
         <CompletionModal
           onNextLevel={nextLevel && !customLevel ? () => onNextLevel(nextLevel) : null}
           onRestart={handleRestart}

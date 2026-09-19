@@ -28,17 +28,18 @@ function boxesOverlap(
   );
 }
 
-async function seed(page: Page, save?: object, tutorialDone = true) {
-  await page.addInitScript(({ profile, saved, dismissTutorial }) => {
+async function seed(page: Page, save?: object, tutorialDone = true, customLevels?: object[]) {
+  await page.addInitScript(({ profile, saved, dismissTutorial, custom }) => {
     localStorage.setItem('hanziGame_profile', JSON.stringify(profile));
     if (saved) localStorage.setItem('hanzi-match-save', JSON.stringify(saved));
+    if (custom) localStorage.setItem('hanzi-match-custom-levels', JSON.stringify(custom));
     if (dismissTutorial) localStorage.setItem('hanzi-match-tutorial-v1', 'done');
-  }, { profile: PROFILE, saved: save, dismissTutorial: tutorialDone });
+  }, { profile: PROFILE, saved: save, dismissTutorial: tutorialDone, custom: customLevels });
 }
 
 async function enterFirstLevel(page: Page) {
   await page.goto('/');
-  await page.getByRole('button', { name: /开始/ }).click();
+  await page.getByRole('button', { name: '开始 →', exact: true }).click();
   await expect(page.locator('.mission-scene')).toBeVisible();
 }
 
@@ -100,6 +101,19 @@ async function completeVisibleRound(page: Page) {
     await left.click();
     await right.click();
     await page.clock.runFor(300);
+  }
+}
+
+async function completeReviewRound(page: Page) {
+  const total = await page.locator('.mission-progress output').evaluate(element =>
+    Number(element.textContent?.split('/')[1]?.trim() || 0));
+  for (let restored = 1; restored <= total; restored += 1) {
+    const { left, right } = await findVisiblePair(page);
+    const [leftBox, rightBox] = await Promise.all([left.boundingBox(), right.boundingBox()]);
+    if (!leftBox || !rightBox) throw new Error('Review pair is not visible');
+    await page.mouse.click(leftBox.x + leftBox.width / 2, leftBox.y + leftBox.height / 2);
+    await page.mouse.click(rightBox.x + rightBox.width / 2, rightBox.y + rightBox.height / 2);
+    await page.waitForTimeout(320);
   }
 }
 
@@ -456,7 +470,7 @@ test('tutorial explains the real rule once', async ({ page }) => {
   await expect(page.getByText(/长按汉字可以查看拼音/)).toBeVisible();
   await page.getByRole('button', { name: /我会啦/ }).click();
   await page.getByRole('button', { name: /选关/ }).click();
-  await page.getByRole('button', { name: /开始/ }).click();
+  await page.getByRole('button', { name: '开始 →', exact: true }).click();
   await expect(page.getByRole('heading', { name: '给汉字找伙伴' })).toHaveCount(0);
 });
 
@@ -528,4 +542,171 @@ test('word book reports only words actually practiced', async ({ page }) => {
   await page.getByRole('button', { name: /宝藏图鉴/ }).click();
   await page.getByText('洗手', { exact: true }).first().click();
   await expect(page.getByRole('button', { name: /换一张图/ })).toHaveCount(0);
+});
+
+function reviewPractice(overrides: Partial<{
+  correctCount: number;
+  wrongCount: number;
+  hintCount: number;
+  correctStreak: number;
+  lastPracticedAt: number;
+}> = {}) {
+  return {
+    correctCount: 1,
+    wrongCount: 0,
+    hintCount: 0,
+    correctStreak: 1,
+    lastPracticedAt: Date.now(),
+    ...overrides,
+  };
+}
+
+test('bottom review dock shows real count, stays accessible, and preserves the map at iPad landscape size', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const words = curriculum.units[0].pairs.slice(0, 4).map(pair => pair.join(''));
+  await seed(page, {
+    unlockedLevels: ['g2s1u1'],
+    completedLevels: [],
+    wordCards: [],
+    stories: [],
+    practiceByLevel: { g2s1u1: Object.fromEntries(words.map(word => [word, reviewPractice()])) },
+    levelStars: {},
+  });
+  await page.goto('/');
+
+  const dock = page.locator('.review-entry');
+  const trail = page.locator('.trail-scroll');
+  const start = page.getByRole('button', { name: '开始今日复习，共 4 个词' });
+  await expect(dock).toContainText('4 个词');
+  await expect(dock).toContainText('约 2–3 分钟');
+  await expect(start).toBeEnabled();
+  await expect(page.getByRole('button', { name: '我的字库' })).toBeVisible();
+  const [trailBox, dockBox] = await Promise.all([trail.boundingBox(), dock.boundingBox()]);
+  expect(trailBox?.height).toBeGreaterThan(dockBox?.height || 0);
+  expect(await page.evaluate(() => ({
+    horizontal: document.documentElement.scrollWidth > window.innerWidth,
+    vertical: document.documentElement.scrollHeight > window.innerHeight,
+  }))).toEqual({ horizontal: false, vertical: false });
+
+  await start.focus();
+  await expect(start).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByText('今日复习', { exact: true }).first()).toBeVisible();
+});
+
+test('empty review dock explains how to unlock review and cannot start a round', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await seed(page, {
+    unlockedLevels: ['g2s1u1'],
+    completedLevels: [],
+    wordCards: [],
+    stories: [],
+    practiceByLevel: {},
+    levelStars: {},
+  });
+  await page.goto('/');
+
+  await expect(page.getByText('再玩一关，就能开始复习')).toBeVisible();
+  const disabled = page.getByRole('button', { name: '今日复习暂不可用' });
+  await expect(disabled).toBeDisabled();
+  await disabled.click({ force: true });
+  await expect(page.locator('.gb')).toHaveCount(0);
+});
+
+test('visible review flow routes duplicate, wrong, hint, and correct events without curriculum side effects', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const pairs = curriculum.units[0].pairs.slice(0, 6);
+  const words = pairs.map(pair => pair.join(''));
+  const duplicateWord = words[0];
+  const losingPractice = reviewPractice({ correctCount: 2, correctStreak: 1 });
+  const winningPractice = reviewPractice({ correctCount: 0, wrongCount: 5, correctStreak: 0 });
+  const curriculumState = {
+    unlockedLevels: ['g2s1u1', 'g2s1u2'],
+    completedLevels: ['g2s1u1'],
+    levelStars: { g2s1u1: 2 },
+  };
+  const customLevels = [{
+    id: 'custom-review-winner',
+    title: '复习来源',
+    pairs: [pairs[0]],
+    createdAt: 1,
+    playCount: 7,
+  }];
+  await seed(page, {
+    ...curriculumState,
+    wordCards: [],
+    stories: [],
+    practiceByLevel: {
+      g2s1u1: Object.fromEntries(words.map(word => [word, word === duplicateWord ? losingPractice : reviewPractice()])),
+      'custom-review-winner': { [duplicateWord]: winningPractice },
+    },
+  }, true, customLevels);
+  await page.goto('/');
+  await page.getByRole('button', { name: '开始今日复习，共 6 个词' }).click();
+  await expect(page.locator('.cell:not(.cell-empty)')).toHaveCount(12);
+
+  const duplicateLeft = page.locator('.cell:not(.cell-empty)[data-cell-id$="-0"]', { hasText: pairs[0][0] });
+  const wrongRight = page.locator('.cell:not(.cell-empty)[data-cell-id$="-1"]')
+    .filter({ hasNotText: pairs[0][1] }).first();
+  await duplicateLeft.click();
+  await wrongRight.click();
+  await page.waitForTimeout(400);
+  await page.getByRole('button', { name: /找一对给我看/ }).click();
+  await expect(page.locator('.cell-hinted')).toHaveCount(2);
+  await page.getByRole('button', { name: /重新摆放/ }).click();
+  await expect(page.locator('.cell-selected')).toHaveCount(0);
+  await expect(page.locator('.cell:not(.cell-empty)')).toHaveCount(12);
+
+  await completeReviewRound(page);
+  await expect(page.locator('.cmp-modal')).toBeVisible();
+  await expect(page.locator('.cmp-learning-summary')).toContainText('本轮练习 6 个词');
+
+  await expect.poll(async () => page.evaluate(({ duplicate, originalCurriculum, originalCustom }) => {
+    const save = JSON.parse(localStorage.getItem('hanzi-match-save') || '{}');
+    const custom = JSON.parse(localStorage.getItem('hanzi-match-custom-levels') || '[]');
+    const curriculum = {
+      unlockedLevels: save.unlockedLevels,
+      completedLevels: save.completedLevels,
+      levelStars: save.levelStars,
+    };
+    const customPlayCounts = custom.map((item: { id: string; playCount: number }) => ({
+      id: item.id,
+      playCount: item.playCount,
+    }));
+    return {
+      winner: save.practiceByLevel?.['custom-review-winner']?.[duplicate],
+      loser: save.practiceByLevel?.g2s1u1?.[duplicate],
+      curriculumUnchanged: JSON.stringify(curriculum) === JSON.stringify(originalCurriculum),
+      customPlayCountsUnchanged: JSON.stringify(customPlayCounts) === JSON.stringify(originalCustom),
+    };
+  }, {
+    duplicate: duplicateWord,
+    originalCurriculum: curriculumState,
+    originalCustom: customLevels.map(item => ({ id: item.id, playCount: item.playCount })),
+  })).toMatchObject({
+    winner: { correctCount: 1, wrongCount: 6, correctStreak: 1 },
+    loser: losingPractice,
+    curriculumUnchanged: true,
+    customPlayCountsUnchanged: true,
+  });
+});
+
+test('two-candidate review uses exactly four cells and a two-beat mission scene', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const words = curriculum.units[0].pairs.slice(0, 2).map(pair => pair.join(''));
+  await seed(page, {
+    unlockedLevels: ['g2s1u1'],
+    completedLevels: [],
+    wordCards: [],
+    stories: [],
+    practiceByLevel: { g2s1u1: Object.fromEntries(words.map(word => [word, reviewPractice()])) },
+    levelStars: {},
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: '开始今日复习，共 2 个词' }).click();
+
+  await expect(page.locator('.cell:not(.cell-empty)')).toHaveCount(4);
+  await expect(page.locator('.mission-beat')).toHaveCount(2);
+  await expect(page.locator('.mission-progress output')).toHaveText('0 / 2');
+  await expect(page.locator('.mission-stage')).toHaveClass(/mission-stage-beat-count-2/);
 });

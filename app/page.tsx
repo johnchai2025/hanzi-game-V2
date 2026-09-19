@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { LevelData, CustomLevel, ReviewContext, Story, UserProfile, WordCard } from '@/types';
 import { useLevels } from '@/hooks/useLevels';
 import { useSaveData } from '@/hooks/useSaveData';
@@ -26,12 +26,8 @@ export default function Home() {
   const [activeLevel, setActiveLevel] = useState<LevelData | null>(null);
   const [activeCustomLevel, setActiveCustomLevel] = useState<CustomLevel | null>(null);
   const [activeReviewContext, setActiveReviewContext] = useState<ReviewContext | null>(null);
-  const reviewBootstrapRef = useRef(false);
-
-  // Task 6 adds the approved visible entry. Until then, this programmatic route
-  // keeps the complete review wiring testable without exposing unfinished UI.
-  useEffect(() => {
-    if (loading || reviewBootstrapRef.current || window.location.hash !== '#review') return;
+  const reviewCandidates = useMemo(() => {
+    if (loading) return [];
     const candidates = buildReviewCandidates({
       builtInLevels: levels.map(level => ({
         id: level.id,
@@ -46,19 +42,13 @@ export default function Home() {
         practiceByWord: saveData.practiceByLevel[level.id] || {},
       })),
     });
-    const selection = selectDailyReview(candidates);
-    if (!selection.available) return;
-    const context = createReviewContext(selection.candidates, saveData.practiceByLevel, candidates);
-    const timer = window.setTimeout(() => {
-      if (reviewBootstrapRef.current) return;
-      reviewBootstrapRef.current = true;
-      setActiveReviewContext(context);
-      setActiveCustomLevel(null);
-      setActiveLevel(context.level);
-      setView('game');
-    }, 0);
-    return () => window.clearTimeout(timer);
+    return candidates;
   }, [customLevels, levels, loading, saveData]);
+
+  const reviewSelection = useMemo(
+    () => selectDailyReview(reviewCandidates),
+    [reviewCandidates],
+  );
 
   if (loading) {
     return (
@@ -103,6 +93,19 @@ export default function Home() {
     setActiveReviewContext(null);
     setActiveLevel(level);
     setActiveCustomLevel(null);
+  };
+
+  const handleStartReview = () => {
+    if (!reviewSelection.available) return;
+    const context = createReviewContext(
+      reviewSelection.candidates,
+      saveData.practiceByLevel,
+      reviewCandidates,
+    );
+    setActiveReviewContext(context);
+    setActiveCustomLevel(null);
+    setActiveLevel(context.level);
+    setView('game');
   };
 
   const handleComplete = (levelId: string, nextId: string | null, stars: number) => {
@@ -187,6 +190,8 @@ export default function Home() {
             onPlayCustom={handlePlayCustom}
             onSaveCustom={saveCustomLevel}
             onDeleteCustom={deleteCustomLevel}
+            reviewCandidateCount={reviewSelection.candidates.length}
+            onStartReview={handleStartReview}
             getCharacter={getCharacter}
           />
         )}

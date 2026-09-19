@@ -5,6 +5,7 @@ import type { LevelData, CustomLevel, AnimalCharacter } from '../types';
 import { CustomTab } from './CustomTab';
 import { MascotImg } from './MascotImg';
 import { LevelNodeIcon } from './LevelNodeIcon';
+import { ReviewEntryCard } from './ReviewEntryCard';
 
 interface Props {
   levels: LevelData[];
@@ -14,6 +15,8 @@ interface Props {
   onPlayCustom: (level: CustomLevel) => void;
   onSaveCustom: (level: CustomLevel) => void;
   onDeleteCustom: (id: string) => void;
+  reviewCandidateCount: number;
+  onStartReview: () => void;
   getCharacter: () => AnimalCharacter;
 }
 
@@ -25,6 +28,8 @@ export function LevelSelectScreen({
   onPlayCustom,
   onSaveCustom,
   onDeleteCustom,
+  reviewCandidateCount,
+  onStartReview,
   getCharacter,
 }: Props) {
   const [showCustom, setShowCustom] = useState(false);
@@ -93,9 +98,12 @@ export function LevelSelectScreen({
         </div>
       </div>
 
-      <button className="map-custom-btn" onClick={() => setShowCustom(true)}>
-        ✨ 我的字库
-      </button>
+      <div className="map-footer">
+        <ReviewEntryCard candidateCount={reviewCandidateCount} onStart={onStartReview} />
+        <button className="map-custom-btn" onClick={() => setShowCustom(true)}>
+          我的字库
+        </button>
+      </div>
 
       {showCustom && (
         <div className="modal-overlay" onClick={() => setShowCustom(false)}>

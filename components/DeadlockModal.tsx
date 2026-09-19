@@ -17,7 +17,7 @@ export function DeadlockModal({ onReshuffle, onRestart }: DeadlockModalProps) {
             🔄 重新开始
           </button>
           <button className="btn btn-primary" onClick={onReshuffle}>
-            🔀 重新打乱
+            🔀 换几个词再试试
           </button>
         </div>
       </div>

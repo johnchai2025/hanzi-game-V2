@@ -3,38 +3,34 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import type { LevelData, CustomLevel, WordPair, WordCard } from '../types';
 import { CUSTOM_LEVEL_BOARD_ROWS, CUSTOM_LEVEL_BOARD_COLS } from '../types';
-import { useGame, pickPairsForGame } from '../hooks/useGame';
+import { useGame } from '../hooks/useGame';
 import { useTTS } from '../hooks/useTTS';
-import { useWordCardGeneration } from '../hooks/useWordCardGeneration';
+import { pickPairsForPractice } from '../lib/practiceSelection';
+import { calculateStars } from '../lib/gameProgress';
 import { GameBoard } from './GameBoard';
 import { FeedbackToast } from './FeedbackToast';
 import { MilestoneToast } from './MilestoneToast';
 import { CompletionModal } from './CompletionModal';
 import { DeadlockModal } from './DeadlockModal';
 import { NewCardToast } from './NewCardToast';
-import { RewardCardModal } from './RewardCardModal';
 import { MascotImg } from './MascotImg';
-
-interface RewardCardState {
-  status: 'generating' | 'ready';
-  card: WordCard;
-  error?: string;
-}
+import { PairSuccessToast } from './PairSuccessToast';
+import { GameTutorial } from './GameTutorial';
 
 interface Props {
   level: LevelData;
   nextLevel: LevelData | null;
   onSelectLevel: () => void;
   onNextLevel: (level: LevelData) => void;
-  onComplete: (levelId: string, nextId: string | null) => void;
+  onComplete: (levelId: string, nextId: string | null, stars: number) => void;
   customLevel?: CustomLevel;
   onIncrementPlayCount?: (id: string) => void;
-  onSaveCustom: (level: CustomLevel) => void;
-  onPlayCustom: (level: CustomLevel) => void;
   onWordBook: () => void;
   // 新增：词卡生成相关
   onAddWordCard?: (card: WordCard) => void;
+  onRecordWordPractice?: (levelId: string, word: string) => void;
   savedWordCards?: WordCard[];
+  practiceByLevel?: Record<string, Record<string, { correctCount: number; lastPracticedAt: number }>>;
   getCharacter?: () => import('../types').AnimalCharacter;
 }
 
@@ -46,11 +42,11 @@ export function GameScreen({
   onComplete,
   customLevel,
   onIncrementPlayCount,
-  onSaveCustom,
-  onPlayCustom,
   onWordBook,
   onAddWordCard,
+  onRecordWordPractice,
   savedWordCards = [],
+  practiceByLevel = {},
   getCharacter,
 }: Props) {
   // 词对数量仍按原来的方式从关卡棋盘尺寸推导（不改 curriculum/自定义关卡数据）
@@ -62,87 +58,85 @@ export function GameScreen({
   // 行数等于本局词对数（跟原来的 rows*cols 网格尺寸解耦，只用于渲染整形）
   const boardRows = pairCount;
   const boardCols = 2;
+  const currentLevelId = customLevel?.id ?? level.id;
+  const practicedWords = useMemo(
+    () => new Set(Object.keys(practiceByLevel[currentLevelId] || {})),
+    [practiceByLevel, currentLevelId]
+  );
 
   // 用 useState 懒初始化而不是 useMemo：保证本局抽中的词对在整局游戏期间
   // 绝对不会重新抽样（useMemo 只要依赖项引用变化就可能重算，一旦重算就会
   // 抽出不同的随机词对，但棋盘还是旧的，会导致"明明是词却消不掉"）
   const [activePairs] = useState<WordPair[]>(() =>
-    customLevel ? pickPairsForGame(customLevel.pairs, pairCount) : pickPairsForGame(level.pairs, pairCount)
+    pickPairsForPractice(customLevel?.pairs ?? level.pairs, pairCount, practicedWords)
   );
 
   const completedRef = useRef(false);
   const [showNewCardToast, setShowNewCardToast] = useState(false);
   const [savedCardCount, setSavedCardCount] = useState(0);
-  const [rewardCard, setRewardCard] = useState<RewardCardState | null>(null);
+  const [pairSuccess, setPairSuccess] = useState<{ word: string; chars: WordPair } | null>(null);
   const [flippedCells, setFlippedCells] = useState<Set<string>>(new Set());
+  const [showTutorial, setShowTutorial] = useState(() =>
+    typeof window !== 'undefined' && !localStorage.getItem('hanzi-match-tutorial-v1')
+  );
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { speak } = useTTS();
-
-  const { generateCardPreview } = useWordCardGeneration();
-
-  // 生成/换图成功后自动保存到词卡库，不需要用户手动点保存。
-  // 去重键统一用 word（不再是 levelId+word）——图库本身就是"一词一图"，
-  // 卡片库跟着按同一个键走才不会出现同一个词存两条记录、IndexedDB 里存两份图的情况。
-  const persistCard = useCallback((card: WordCard) => {
-    if (!card.imageUrl) return;
-    const isNewWord = !savedWordCards.some(c => c.word === card.word);
-    onAddWordCard?.(card);
-    if (isNewWord) {
-      setSavedCardCount(prev => prev + 1);
-      setShowNewCardToast(true);
-      setTimeout(() => setShowNewCardToast(false), 3000);
-    }
-  }, [savedWordCards, onAddWordCard]);
 
   const handlePairEliminated = useCallback(({ word, chars }: { word: string; chars: WordPair }) => {
     speak(word);
+    setPairSuccess({ word, chars });
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    successTimerRef.current = setTimeout(() => setPairSuccess(null), 1200);
 
-    // 该词语已经生成过图片（无论是在哪一关获得的），直接复用，不用再跑一次网络请求
-    const existing = savedWordCards.find(c => c.word === word && c.imageUrl);
-    if (existing) {
-      setRewardCard({ status: 'ready', card: existing });
-      return;
-    }
-
-    const placeholderCard: WordCard = {
+    const existingCard = savedWordCards.find(existing => existing.word === word);
+    const card: WordCard = {
       id: `card-${word}`,
       word,
       chars,
-      imageUrl: '',
+      imageUrl: existingCard?.imageUrl || '',
       generatedAt: Date.now(),
-      levelId: level.id,
     };
+    const isNewWord = !existingCard;
+    onAddWordCard?.(card);
+    onRecordWordPractice?.(currentLevelId, word);
+    if (isNewWord) {
+      setSavedCardCount(prev => prev + 1);
+      setShowNewCardToast(true);
+      setTimeout(() => setShowNewCardToast(false), 1800);
+    }
+  }, [currentLevelId, onAddWordCard, onRecordWordPractice, savedWordCards, speak]);
 
-    setRewardCard({ status: 'generating', card: placeholderCard });
-    generateCardPreview(word, chars, level.id).then(({ card, error }) => {
-      setRewardCard(current => {
-        if (!current || current.card.word !== word) return current;
-        return { status: 'ready', card, error };
-      });
-      if (card.imageUrl) persistCard(card);
-    });
-  }, [savedWordCards, generateCardPreview, level.id, speak, persistCard]);
+  useEffect(() => () => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+  }, []);
+
+  // 死局时"重新打乱"要从完整词库（不止本局抽中的这几对）里换新词，
+  // 自定义关卡的完整词库是 customLevel.pairs，不是 level（那只是占位用的第一关）
+  const fullPool = customLevel ? customLevel.pairs : level.pairs;
 
   const gameOptions = useMemo(() => ({
     rows: boardRows,
     cols: boardCols,
+    fullPool,
     onPairEliminated: handlePairEliminated,
-  }), [boardCols, boardRows, handlePairEliminated]);
+  }), [boardCols, boardRows, fullPool, handlePairEliminated]);
 
-  const { cells, eliminatedCount, isComplete, feedback, milestone, isDeadlock, handleCellClick, showHint, restart, reshuffle } =
+  const { cells, eliminatedCount, isComplete, feedback, milestone, isDeadlock, mistakeCount, hintCount, handleCellClick, showHint, restart, reshuffle } =
     useGame(level, activePairs, gameOptions);
+  const earnedStars = calculateStars({ mistakeCount, hintCount });
 
   // 监听关卡完成
   useEffect(() => {
     if (isComplete && !completedRef.current) {
       completedRef.current = true;
       if (!customLevel) {
-        onComplete(level.id, nextLevel?.id ?? null);
+        onComplete(level.id, nextLevel?.id ?? null, earnedStars);
       } else if (onIncrementPlayCount) {
         onIncrementPlayCount(customLevel.id);
       }
 
     }
-  }, [isComplete, level, nextLevel, customLevel, onComplete, onIncrementPlayCount]);
+  }, [isComplete, level, nextLevel, customLevel, onComplete, onIncrementPlayCount, earnedStars]);
 
   const handleFlipCell = useCallback((cellId: string) => {
     setFlippedCells(prev => {
@@ -156,9 +150,9 @@ export function GameScreen({
   const handleRestart = () => {
     completedRef.current = false;
     setSavedCardCount(0);
-    setRewardCard(null);
+    setPairSuccess(null);
     setFlippedCells(new Set());
-    const newPairs = customLevel ? pickPairsForGame(customLevel.pairs, pairCount) : pickPairsForGame(level.pairs, pairCount);
+    const newPairs = pickPairsForPractice(customLevel?.pairs ?? level.pairs, pairCount, practicedWords);
     restart(newPairs);
   };
 
@@ -166,31 +160,12 @@ export function GameScreen({
     reshuffle();
   };
 
-  const handleCloseRewardCard = () => {
-    setRewardCard(null);
-  };
-
-  // 不满意就换一张：不管这次是"生成失败重试"还是"生成成功但想换一张"，
-  // 都走 force=true 跳过图库缓存、强制重新生成并覆盖。
-  const handleRetryRewardCard = () => {
-    if (!rewardCard) return;
-    const { word, chars, levelId } = rewardCard.card;
-    setRewardCard({ status: 'generating', card: rewardCard.card });
-    generateCardPreview(word, chars, levelId, true).then(({ card, error }) => {
-      setRewardCard(current => {
-        if (!current || current.card.word !== word) return current;
-        return { status: 'ready', card, error };
-      });
-      if (card.imageUrl) persistCard(card);
-    });
-  };
-
   const character = getCharacter?.() ?? { animal: '小狐狸', emoji: '🦊', name: '小狐狸' };
   const progress = activePairs.length > 0 ? Math.round((eliminatedCount / activePairs.length) * 100) : 0;
   const title = customLevel ? customLevel.title : level.title;
   const mascotMsg = (() => {
     if (progress >= 100) return '全部消完啦！🎉';
-    if (eliminatedCount === 0) return '找找相同的词语，配对消除吧！';
+    if (eliminatedCount === 0) return '左右各选一个字，组成词语吧！';
     if (eliminatedCount >= 4) return `超厉害！${character.name}为你跳舞啦～`;
     if (eliminatedCount >= 2) return '连消达人！继续冲！';
     return '太棒了！继续加油！';
@@ -208,12 +183,8 @@ export function GameScreen({
       <div className="gb-side">
         <div className="gb-side-head">
           <div className="gb-lvl">{customLevel ? '✨ ' : `第${level.level}关 · `}{title}</div>
-          <div className="gb-lvl-sub">点相同的词语消消看～</div>
+          <div className="gb-lvl-sub">左右各选一个字，组成词语～</div>
         </div>
-
-        {eliminatedCount >= 2 && (
-          <div className="gb-combo">连消 ×{eliminatedCount} 🔥</div>
-        )}
 
         <div className="gb-mascot-card">
           <MascotImg animal={character.animal} emoji={character.emoji} className="mascot-img-sm" />
@@ -239,6 +210,7 @@ export function GameScreen({
       <MilestoneToast message={milestone} />
       <FeedbackToast message={feedback} />
       <NewCardToast count={savedCardCount} show={showNewCardToast} />
+      <PairSuccessToast payload={pairSuccess} />
 
       {isComplete && (
         <CompletionModal
@@ -248,15 +220,7 @@ export function GameScreen({
           onWordBook={onWordBook}
           newCardCount={savedCardCount}
           character={character}
-        />
-      )}
-      {rewardCard && (
-        <RewardCardModal
-          card={rewardCard.card}
-          status={rewardCard.status}
-          error={rewardCard.error}
-          onClose={handleCloseRewardCard}
-          onRetry={handleRetryRewardCard}
+          stars={earnedStars}
         />
       )}
       {isDeadlock && (
@@ -264,6 +228,12 @@ export function GameScreen({
           onReshuffle={handleReshuffle}
           onRestart={handleRestart}
         />
+      )}
+      {showTutorial && (
+        <GameTutorial onDismiss={() => {
+          localStorage.setItem('hanzi-match-tutorial-v1', 'done');
+          setShowTutorial(false);
+        }} />
       )}
     </div>
   );

@@ -17,7 +17,7 @@ type View = 'levelselect' | 'game' | 'wordbook' | 'story';
 
 export default function Home() {
   const { levels, loading, error, reload } = useLevels();
-  const { saveData, customLevels, completeLevel, addWordCard, addStory, deleteStory, saveCustomLevel, deleteCustomLevel, incrementPlayCount, deleteWordCard } = useSaveData();
+  const { saveData, customLevels, completeLevel, recordWordPractice, addWordCard, addStory, deleteStory, saveCustomLevel, deleteCustomLevel, incrementPlayCount, deleteWordCard } = useSaveData();
   const { saveProfile, isSetupRequired, getCharacter, getRandomScene } = useProfile();
 
   const [view, setView] = useState<View>('levelselect');
@@ -66,8 +66,8 @@ export default function Home() {
     setActiveCustomLevel(null);
   };
 
-  const handleComplete = (levelId: string, nextId: string | null) => {
-    completeLevel(levelId, nextId);
+  const handleComplete = (levelId: string, nextId: string | null, stars: number) => {
+    completeLevel(levelId, nextId, stars);
   };
 
   const handleProfileComplete = (newProfile: UserProfile) => {
@@ -105,11 +105,11 @@ export default function Home() {
             onComplete={handleComplete}
             customLevel={activeCustomLevel ?? undefined}
             onIncrementPlayCount={incrementPlayCount}
-            onSaveCustom={saveCustomLevel}
-            onPlayCustom={handlePlayCustom}
             onWordBook={() => setView('wordbook')}
             onAddWordCard={handleAddWordCard}
+            onRecordWordPractice={recordWordPractice}
             savedWordCards={saveData.wordCards}
+            practiceByLevel={saveData.practiceByLevel}
             getCharacter={getCharacter}
           />
         )}
@@ -121,7 +121,6 @@ export default function Home() {
             customLevels={customLevels}
             onStory={() => setView('story')}
             onDeleteCard={deleteWordCard}
-            onUpdateCard={handleAddWordCard}
           />
         )}
 

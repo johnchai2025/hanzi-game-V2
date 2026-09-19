@@ -8,7 +8,7 @@ import { LevelNodeIcon } from './LevelNodeIcon';
 
 interface Props {
   levels: LevelData[];
-  saveData: { unlockedLevels: string[]; completedLevels: string[] };
+  saveData: { unlockedLevels: string[]; completedLevels: string[]; levelStars: Record<string, number> };
   customLevels: CustomLevel[];
   onSelectLevel: (level: LevelData) => void;
   onPlayCustom: (level: CustomLevel) => void;
@@ -38,7 +38,7 @@ export function LevelSelectScreen({
 
   // 第一个「已解锁未完成」即当前关
   const nowIndex = levels.findIndex((l, idx) => isUnlocked(l.id, idx) && !isCompleted(l.id));
-  const doneCount = levels.filter(l => isCompleted(l.id)).length;
+  const earnedStars = levels.reduce((sum, level) => sum + (saveData.levelStars?.[level.id] || 0), 0);
 
   const stateOf = (level: LevelData, idx: number): 'done' | 'now' | 'lock' => {
     if (isCompleted(level.id)) return 'done';
@@ -46,15 +46,17 @@ export function LevelSelectScreen({
     return isUnlocked(level.id, idx) ? 'now' : 'lock';
   };
 
-  const subOf = (st: 'done' | 'now' | 'lock') =>
-    st === 'done' ? '已通关 ⭐⭐⭐' : st === 'now' ? '继续闯关！' : '通关解锁';
+  const subOf = (level: LevelData, st: 'done' | 'now' | 'lock') =>
+    st === 'done'
+      ? `已通关 ${'⭐'.repeat(saveData.levelStars?.[level.id] || 1)}`
+      : st === 'now' ? '继续闯关！' : '通关解锁';
 
   return (
     <div className="map-main">
       <div className="map-head">
         <div className="map-title">识字大冒险</div>
         <div className="map-sub">二年级上 · {character.name || '小伙伴'}陪你出发</div>
-        <div className="map-prog">⭐ {doneCount} / {levels.length}</div>
+        <div className="map-prog">⭐ {earnedStars} / {levels.length * 3}</div>
       </div>
 
       <div className="trail-scroll">
@@ -78,7 +80,7 @@ export function LevelSelectScreen({
                 </div>
                 <div className="trail-card">
                   <div className="trail-name">{level.level}. {level.title}</div>
-                  <div className="trail-sub">{subOf(st)}</div>
+                  <div className="trail-sub">{subOf(level, st)}</div>
                   {clickable && (
                     <button className="btn btn-primary" onClick={() => onSelectLevel(level)}>
                       {st === 'done' ? '重玩' : '开始'} →

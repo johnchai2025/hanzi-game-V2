@@ -55,7 +55,18 @@ export interface WordCard {
   chars: [string, string];
   imageUrl: string;
   generatedAt: number;
-  levelId: string;
+  /** 旧存档迁移信息；新进度请使用 SaveData.practiceByLevel。 */
+  levelId?: string;
+}
+
+export interface WordPractice {
+  correctCount: number;
+  lastPracticedAt: number;
+}
+
+export interface AttemptSummary {
+  mistakeCount: number;
+  hintCount: number;
 }
 
 export interface Story {
@@ -77,6 +88,8 @@ export interface SaveData {
   completedLevels: string[];
   wordCards: WordCard[];         // 新增
   stories: Story[];
+  practiceByLevel: Record<string, Record<string, WordPractice>>;
+  levelStars: Record<string, number>;
 }
 
 export interface CurriculumUnit {
@@ -122,6 +135,8 @@ export interface ParseResult {
 export const CUSTOM_LEVEL_BOARD_ROWS = 4;
 export const CUSTOM_LEVEL_BOARD_COLS = 4;
 export const CUSTOM_LEVEL_PAIR_COUNT = (CUSTOM_LEVEL_BOARD_ROWS * CUSTOM_LEVEL_BOARD_COLS) / 2;
+
+export const STORY_CARD_MINIMUM = 3;
 
 // 角色固定为狐狸（收敛前是 8 选 1，生图成本随"动物×场景"组合数几何级增长）。
 // 仍保留数组形态，减少 ProfileSetupModal / types 消费端的改动面。

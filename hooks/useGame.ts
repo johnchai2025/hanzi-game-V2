@@ -17,9 +17,55 @@ export function pickPairsForGame(allPairs: WordPair[], maxPairs = 18): WordPair[
   return shuffleArray(allPairs).slice(0, maxPairs);
 }
 
+interface ReshuffleReplacement {
+  activePairs: WordPair[];
+  freshPairs: WordPair[];
+}
+
+/**
+ * 死局回收的核心逻辑：棋盘上所有未消除的字，内容上已经无法互相配对
+ * （调用前已经用 hasValidPair 确认过）。单纯打乱这批字的行位置毫无意义——
+ * 判定完全按字符内容查表、不看位置，字不变，死局必然原样复现。
+ * 真正能解开死局的唯一办法是把这批卡住的词换成词库里没出现过的新词。
+ *
+ * 优先从"本局还没抽到过"的词里换新词；真的不够用（词库太小）才退而求其次，
+ * 允许拿"这局已经消除过"的词回收再来一遍——比让孩子永远卡死强。
+ *
+ * 抽出的每个新词本身都是词库里真实、独立、自成一对的词，所以新换上的这批字
+ * 之间必然至少存在一组有效配对；如果这次刚好又撞上小概率的二次死局，
+ * 玩家可以再点一次"重新打乱"重抽，不是必然无解。
+ */
+export function computeReshuffleReplacement(
+  activePairs: WordPair[],
+  stuckWords: Set<string>,
+  fullPool: WordPair[]
+): ReshuffleReplacement {
+  const neededCount = stuckWords.size;
+  const usedThisRound = new Set(activePairs.map(p => p[0] + p[1]));
+
+  const spare = fullPool.filter(p => !usedThisRound.has(p[0] + p[1]));
+  let freshPairs = pickPairsForGame(spare, Math.min(neededCount, spare.length));
+
+  if (freshPairs.length < neededCount) {
+    // 词库太小，spare 不够：从"这局已经消除过"的词里回收（排除仍卡住的这几个，
+    // 避免把死局本身原样放回去）
+    const resolvedWords = new Set([...usedThisRound].filter(w => !stuckWords.has(w)));
+    const fallbackPool = fullPool.filter(p => resolvedWords.has(p[0] + p[1]));
+    freshPairs = [...freshPairs, ...pickPairsForGame(fallbackPool, neededCount - freshPairs.length)];
+  }
+
+  const newActivePairs = [
+    ...activePairs.filter(p => !stuckWords.has(p[0] + p[1])),
+    ...freshPairs,
+  ];
+
+  return { activePairs: newActivePairs, freshPairs };
+}
+
 interface UseGameOptions {
   rows?: number;
   cols?: number;
+  fullPool?: WordPair[]; // 本关完整词库（不止本局抽中的这几对），死局时从里面换新词用
   onPairEliminated?: (payload: { word: string; chars: WordPair; pairId: number }) => void;
   onCellSelected?: (payload: { char: string; word: string }) => void;
 }
@@ -72,7 +118,11 @@ function hasValidPair(cells: Cell[][], activePairs: WordPair[]): boolean {
 export function useGame(level: LevelData, pairsOverride?: WordPair[], options: UseGameOptions = {}) {
   const rows = options.rows ?? level.boardRows ?? 6;
   const cols = options.cols ?? level.boardCols ?? 6;
-  const activePairs = pairsOverride ?? level.pairs;
+  const fullPool = options.fullPool ?? level.pairs;
+  // activePairs 用 state 而不是纯派生值：死局时"重新打乱"需要真的替换掉
+  // 卡住的词（见 computeReshuffleReplacement），这必须能实际改变判定用的词表，
+  // 不能只是原样复用传进来的 pairsOverride。
+  const [activePairs, setActivePairs] = useState<WordPair[]>(() => pairsOverride ?? level.pairs);
   const [cells, setCells] = useState<Cell[][]>(() => initBoard(activePairs, rows, cols));
   const [selected, setSelected] = useState<{ row: number; col: number } | null>(null);
   const [eliminatedCount, setEliminatedCount] = useState(0);
@@ -80,6 +130,8 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
   const [feedback, setFeedback] = useState<string | null>(null);
   const [milestone, setMilestone] = useState<string | null>(null);
   const [isDeadlock, setIsDeadlock] = useState(false);
+  const [mistakeCount, setMistakeCount] = useState(0);
+  const [hintCount, setHintCount] = useState(0);
   const milestoneShownRef = useRef(false);
 
   const showFeedback = useCallback((msg: string) => {
@@ -88,54 +140,68 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
   }, []);
 
   const restart = useCallback((newPairs?: WordPair[]) => {
-    setCells(initBoard(newPairs ?? activePairs, rows, cols));
+    const nextPairs = newPairs ?? activePairs;
+    setActivePairs(nextPairs);
+    setCells(initBoard(nextPairs, rows, cols));
     setSelected(null);
     setEliminatedCount(0);
     setIsComplete(false);
     setFeedback(null);
     setMilestone(null);
     setIsDeadlock(false);
+    setMistakeCount(0);
+    setHintCount(0);
     milestoneShownRef.current = false;
   }, [activePairs, rows, cols]);
 
-  // 重新打乱棋盘（不重置进度）
-  // 左右栏各自独立收集未消除的格子、各自独立打乱，保持"第一个字在左栏、
-  // 第二个字在右栏"的栏位归属不变（不能重排后把左栏的字混到右栏）
+  // 死局回收：不是简单打乱位置——判定完全按字符内容查表、不看行列位置，
+  // 卡住的字原样挪个位置，内容没变，死局会原样复现。真正要做的是把卡住的这批
+  // 字换成词库里没出现过的新词（见 computeReshuffleReplacement 的完整原因说明）。
   const reshuffle = useCallback(() => {
-    const remainingByCol: { char: string; word: string; pairId: number }[][] =
-      Array.from({ length: cols }, () => []);
-    cells.forEach(row =>
+    const stuckLeft: { row: number; col: number }[] = [];
+    const stuckRight: { row: number; col: number }[] = [];
+    const stuckWords = new Set<string>();
+    cells.forEach((row, r) =>
       row.forEach((cell, c) => {
-        if (!cell.isEmpty) {
-          remainingByCol[c].push({ char: cell.char, word: cell.word, pairId: cell.pairId });
-        }
+        if (cell.isEmpty) return;
+        stuckWords.add(cell.word);
+        (c === 0 ? stuckLeft : stuckRight).push({ row: r, col: c });
       })
     );
-    const shuffledByCol = remainingByCol.map(colCells => shuffleArray(colCells));
 
-    setCells(() =>
-      Array.from({ length: rows }, (_, r) =>
-        Array.from({ length: cols }, (_, c) => {
-          const cellData = shuffledByCol[c][r];
-          return {
-            id: `cell-${r}-${c}`,
-            char: cellData?.char ?? '',
-            word: cellData?.word ?? '',
-            pairId: cellData?.pairId ?? -1,
-            isEmpty: !cellData,
-            isSelected: false,
-            isHinted: false,
-            isEliminating: false,
-            isShaking: false,
-          };
-        })
-      )
-    );
+    if (stuckWords.size === 0) {
+      setIsDeadlock(false);
+      return;
+    }
 
+    const { activePairs: newActivePairs, freshPairs } =
+      computeReshuffleReplacement(activePairs, stuckWords, fullPool);
+
+    // 新词分别独立打乱后，按栏位填回原本卡住的那些格子位置
+    const shuffledForLeft = shuffleArray(freshPairs);
+    const shuffledForRight = shuffleArray(freshPairs);
+
+    const nextCells = cells.map(row => row.map(cell => ({ ...cell })));
+    stuckLeft.forEach(({ row, col }, i) => {
+      const pair = shuffledForLeft[i];
+      if (!pair) return; // 极端情况下新词凑不够，格子保持原样，避免崩溃
+      nextCells[row][col] = { ...nextCells[row][col], char: pair[0], word: pair[0] + pair[1] };
+    });
+    stuckRight.forEach(({ row, col }, i) => {
+      const pair = shuffledForRight[i];
+      if (!pair) return;
+      nextCells[row][col] = { ...nextCells[row][col], char: pair[1], word: pair[0] + pair[1] };
+    });
+
+    setCells(nextCells);
+    setActivePairs(newActivePairs);
     setSelected(null);
-    setIsDeadlock(false);
-    showFeedback('棋盘已重新打乱！');
-  }, [cells, cols, rows, showFeedback]);
+    // 换上的新词理论上有极小概率自己又凑巧卡住（词库字符复用总有一点概率）——
+    // 换完立刻重新检测一次，不能无条件当作"肯定解开了"，否则真遇上这种小概率
+    // 情况，死局弹窗不会再出现，孩子会在毫无提示的情况下第二次卡死。
+    setIsDeadlock(!hasValidPair(nextCells, newActivePairs));
+    showFeedback('换了几个新词，再试试！');
+  }, [cells, activePairs, fullPool, showFeedback]);
 
   const showHint = useCallback(() => {
     const flat: { cell: Cell; row: number; col: number }[] = [];
@@ -159,6 +225,7 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
     }
 
     if (validPairs.length === 0) return;
+    setHintCount(prev => prev + 1);
     const pick = validPairs[Math.floor(Math.random() * validPairs.length)];
     setCells(prev => {
       const next = prev.map(row => row.map(cell => ({ ...cell, isHinted: false })));
@@ -196,6 +263,24 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
 
     const first = cells[selected.row][selected.col];
     const second = cell;
+
+    // 双栏配词必须左右各选一个字。若点到同一栏，明确告诉孩子规则，
+    // 不把第二次点击悄悄当作新的第一次选择。
+    if (selected.col === col) {
+      setMistakeCount(prev => prev + 1);
+      setCells(prev => {
+        const next = prev.map(r => r.map(c => ({ ...c })));
+        next[selected.row][selected.col].isShaking = true;
+        next[row][col].isShaking = true;
+        return next;
+      });
+      showFeedback('要从另一边找词语伙伴哦～');
+      setTimeout(() => {
+        setCells(prev => prev.map(r => r.map(c => ({ ...c, isSelected: false, isShaking: false }))));
+        setSelected(null);
+      }, 400);
+      return;
+    }
 
     // 两个汉字能组成有效词语即可消除（无顺序要求，不依赖 pairId）
     const w1 = first.char + second.char;
@@ -262,6 +347,7 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
       // 不是有效词语 — 短暂震动提示两个格子，随后清空选中
       // （不能把这次失败的点击悄悄当成"新的第一次选择"，否则玩家分不清是选中了新格子
       //  还是刚才那次点击失败了）
+      setMistakeCount(prev => prev + 1);
       setCells(prev => {
         const next = prev.map(r => r.map(c => ({ ...c })));
         next[selected.row][selected.col].isShaking = true;
@@ -283,6 +369,8 @@ export function useGame(level: LevelData, pairsOverride?: WordPair[], options: U
     feedback,
     milestone,
     isDeadlock,
+    mistakeCount,
+    hintCount,
     handleCellClick,
     showHint,
     restart,

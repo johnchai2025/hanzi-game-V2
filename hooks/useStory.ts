@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import type { Story, WordCard, AnimalCharacter } from '@/types';
+import { STORY_CARD_MINIMUM } from '@/types';
 
 interface UseStoryOptions {
   onStoryGenerated: (story: Story) => void;
@@ -25,8 +26,8 @@ export function useStory({ onStoryGenerated, getCharacter, getRandomScene }: Use
   const [error, setError] = useState<string | null>(null);
 
   const generateStoryFromCards = useCallback(async (selectedCards: WordCard[]) => {
-    if (selectedCards.length < 3) {
-      setError('至少需要3个词才能编故事');
+    if (selectedCards.length < STORY_CARD_MINIMUM) {
+      setError(`至少需要${STORY_CARD_MINIMUM}个词才能编故事`);
       return null;
     }
 

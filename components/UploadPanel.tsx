@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import type { CustomLevel, ParseResult, WordPair } from '../types';
+import { CUSTOM_LEVEL_PAIR_COUNT } from '../types';
 
 interface Props {
   onSave: (level: CustomLevel) => void;
@@ -25,8 +26,8 @@ function parseContent(content: string): ParseResult {
     pairs.push([line[0], line[1]]);
   });
 
-  if (pairs.length < 18) {
-    errors.push(`有效词语不足18个（当前：${pairs.length}个），请补充后重试`);
+  if (pairs.length < CUSTOM_LEVEL_PAIR_COUNT) {
+    errors.push(`有效词语不足${CUSTOM_LEVEL_PAIR_COUNT}个（当前：${pairs.length}个），请补充后重试`);
   }
 
   return { pairs, errors, warnings };
@@ -121,7 +122,7 @@ export function UploadPanel({ onSave, onPlay, onClose }: Props) {
           >
             <div className="upload-icon">📂</div>
             <div className="upload-text">点击或拖拽上传 .txt 文件</div>
-            <div className="upload-sub">每行一个词语，至少18个，UTF-8 编码</div>
+            <div className="upload-sub">每行一个词语，至少{CUSTOM_LEVEL_PAIR_COUNT}个，UTF-8 编码</div>
           </div>
         ) : (
           <div className="paste-panel">
@@ -133,7 +134,7 @@ export function UploadPanel({ onSave, onPlay, onClose }: Props) {
             />
             <textarea
               className="paste-textarea"
-              placeholder={'每行一个词语，至少18个，例如：\n苹果\n香蕉\n天空\n月亮\n…'}
+            placeholder={`每行一个词语，至少${CUSTOM_LEVEL_PAIR_COUNT}个，例如：\n苹果\n香蕉\n天空\n月亮\n…`}
               value={pasteText}
               onChange={e => { setPasteText(e.target.value); setPasteError(''); }}
               rows={7}
@@ -159,7 +160,7 @@ export function UploadPanel({ onSave, onPlay, onClose }: Props) {
                 <div style={{ margin: '12px 0', textAlign: 'left' }}>
                   <p>📄 <strong>{preview.title}</strong></p>
                   <p>词语总数：{preview.result.pairs.length} 个</p>
-                  <p>每局随机抽取：18 个</p>
+                  <p>每局随机抽取：{CUSTOM_LEVEL_PAIR_COUNT} 个</p>
                   {preview.result.warnings.length > 0 && (
                     <div className="preview-warnings">
                       {preview.result.warnings.map((w, i) => <p key={i} className="warning-text">⚠ {w}</p>)}

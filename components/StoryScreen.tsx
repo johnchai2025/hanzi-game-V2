@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useCallback } from 'react';
 import type { SaveData, Story, AnimalCharacter, WordCard } from '@/types';
+import { STORY_CARD_MINIMUM } from '@/types';
 import { useStory } from '@/hooks/useStory';
 import { useTTS } from '@/hooks/useTTS';
 import { MascotImg } from './MascotImg';
@@ -109,7 +110,7 @@ interface CardPickerProps {
 
 function CardPicker({ cards, selectedIds, isGenerating, onToggle, onConfirm, onCancel }: CardPickerProps) {
   const selectedWords = cards.filter(c => selectedIds.has(c.id)).map(c => c.word);
-  const canConfirm = selectedIds.size >= 3 && !isGenerating;
+  const canConfirm = selectedIds.size >= STORY_CARD_MINIMUM && !isGenerating;
 
   return (
     <div className="story-card-picker">
@@ -121,7 +122,7 @@ function CardPicker({ cards, selectedIds, isGenerating, onToggle, onConfirm, onC
 
       <div className="story-picker-hint">
         {selectedIds.size === 0
-          ? '点击词卡选择（至少3个）'
+          ? `点击词卡选择（至少${STORY_CARD_MINIMUM}个）`
           : `已选 ${selectedIds.size} 个：${selectedWords.join('、')}`}
       </div>
 
@@ -238,7 +239,7 @@ export function StoryScreen({ saveData, onAddStory, onDeleteStory, getCharacter,
   });
 
   const cards = saveData.wordCards || [];
-  const canGenerate = cards.length >= 3;
+  const canGenerate = cards.length >= STORY_CARD_MINIMUM;
   const oldStories = useMemo(() => saveData.stories || [], [saveData.stories]);
 
   const handleToggleCard = useCallback((id: string) => {
@@ -386,7 +387,7 @@ export function StoryScreen({ saveData, onAddStory, onDeleteStory, getCharacter,
             <div className="book-empty">
               {canGenerate
                 ? '还没有故事～点左边「编新故事」开始吧！'
-                : '至少收集 3 张词卡才能编故事，先去闯关收集吧～'}
+                : `至少收集 ${STORY_CARD_MINIMUM} 张词卡才能编故事，先去闯关收集吧～`}
             </div>
           )}
           {error && <div className="story-error">{error}</div>}

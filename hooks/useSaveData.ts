@@ -12,7 +12,47 @@ const CUSTOM_KEY = 'hanzi-match-custom-levels';
 // 新课程一关都不会解锁，游戏会整个锁死。
 const FIRST_LEVEL_ID = 'g2s1u1';
 
-const defaultSave: SaveData = { unlockedLevels: [FIRST_LEVEL_ID], completedLevels: [], wordCards: [], stories: [] };
+const defaultSave: SaveData = {
+  unlockedLevels: [FIRST_LEVEL_ID],
+  completedLevels: [],
+  wordCards: [],
+  stories: [],
+  practiceByLevel: {},
+  levelStars: {},
+};
+
+export function normalizeSaveData(parsed: Partial<SaveData> | null | undefined): SaveData {
+  if (!parsed) return defaultSave;
+
+  const cards = Array.isArray(parsed.wordCards) ? parsed.wordCards : [];
+  const practiceByLevel: SaveData['practiceByLevel'] = { ...(parsed.practiceByLevel || {}) };
+
+  // 旧版卡片曾用 levelId 表示归属。只在新结构尚无该记录时迁移一次；
+  // 新版卡片全局按 word 去重，不再承担关卡进度职责。
+  cards.forEach(card => {
+    if (!card.levelId) return;
+    const levelPractice = { ...(practiceByLevel[card.levelId] || {}) };
+    if (!levelPractice[card.word]) {
+      levelPractice[card.word] = {
+        correctCount: 1,
+        lastPracticedAt: card.generatedAt || Date.now(),
+      };
+    }
+    practiceByLevel[card.levelId] = levelPractice;
+  });
+
+  const unlockedLevels = parsed.unlockedLevels?.length ? parsed.unlockedLevels : [FIRST_LEVEL_ID];
+  return {
+    unlockedLevels: unlockedLevels.includes(FIRST_LEVEL_ID)
+      ? unlockedLevels
+      : [FIRST_LEVEL_ID, ...unlockedLevels],
+    completedLevels: parsed.completedLevels || [],
+    wordCards: cards,
+    stories: parsed.stories || [],
+    practiceByLevel,
+    levelStars: parsed.levelStars || {},
+  };
+}
 
 // 只剥离 base64 图片（旧版直接把整串图存本地，会撑爆 localStorage 5MB 配额）。
 // 新版 imageUrl 是服务器图库的短 URL（/api/word-image/词?v=...），几十个字符，
@@ -36,16 +76,7 @@ function loadSaveFromStorage(): SaveData {
   if (typeof window === 'undefined') return defaultSave;
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      const unlockedLevels = parsed.unlockedLevels?.length ? parsed.unlockedLevels : [FIRST_LEVEL_ID];
-      return {
-        unlockedLevels: unlockedLevels.includes(FIRST_LEVEL_ID) ? unlockedLevels : [FIRST_LEVEL_ID, ...unlockedLevels],
-        completedLevels: parsed.completedLevels || [],
-        wordCards: parsed.wordCards || [],
-        stories: parsed.stories || [],
-      };
-    }
+    if (raw) return normalizeSaveData(JSON.parse(raw));
   } catch {}
   return defaultSave;
 }
@@ -93,9 +124,10 @@ export function useSaveData() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally runs once at mount
 
-  const completeLevel = useCallback((levelId: string, nextLevelId: string | null) => {
+  const completeLevel = useCallback((levelId: string, nextLevelId: string | null, stars: number) => {
     setSaveData(prev => {
       const next: SaveData = {
+        ...prev,
         completedLevels: prev.completedLevels.includes(levelId)
           ? prev.completedLevels
           : [...prev.completedLevels, levelId],
@@ -103,8 +135,32 @@ export function useSaveData() {
           nextLevelId && !prev.unlockedLevels.includes(nextLevelId)
             ? [...prev.unlockedLevels, nextLevelId]
             : prev.unlockedLevels,
-        wordCards: prev.wordCards || [],
-        stories: prev.stories || [],
+        levelStars: {
+          ...(prev.levelStars || {}),
+          [levelId]: Math.max(prev.levelStars?.[levelId] || 0, stars),
+        },
+      };
+      saveToLocalStorage(next);
+      return next;
+    });
+  }, []);
+
+  const recordWordPractice = useCallback((levelId: string, word: string) => {
+    setSaveData(prev => {
+      const levelPractice = prev.practiceByLevel?.[levelId] || {};
+      const previous = levelPractice[word];
+      const next: SaveData = {
+        ...prev,
+        practiceByLevel: {
+          ...(prev.practiceByLevel || {}),
+          [levelId]: {
+            ...levelPractice,
+            [word]: {
+              correctCount: (previous?.correctCount || 0) + 1,
+              lastPracticedAt: Date.now(),
+            },
+          },
+        },
       };
       saveToLocalStorage(next);
       return next;
@@ -125,7 +181,12 @@ export function useSaveData() {
       const existingIndex = existingCards.findIndex(c => c.word === card.word);
       if (existingIndex >= 0) {
         const updatedCards = [...existingCards];
-        updatedCards[existingIndex] = { ...existingCards[existingIndex], ...card };
+        updatedCards[existingIndex] = {
+          ...existingCards[existingIndex],
+          ...card,
+          imageUrl: card.imageUrl || existingCards[existingIndex].imageUrl,
+          levelId: existingCards[existingIndex].levelId ?? card.levelId,
+        };
         const next: SaveData = { ...prev, wordCards: updatedCards };
         saveToLocalStorage(next);
         return next;
@@ -218,6 +279,7 @@ export function useSaveData() {
     saveData,
     customLevels,
     completeLevel,
+    recordWordPractice,
     addWordCard,
     addWordCards,
     addStory,

@@ -27,8 +27,8 @@ function parseContent(content: string): ParseResult {
     pairs.push([line[0], line[1]]);
   });
 
-  if (pairs.length < 18) {
-    errors.push(`有效词语不足18个（当前：${pairs.length}个），请补充后重试`);
+  if (pairs.length < CUSTOM_LEVEL_PAIR_COUNT) {
+    errors.push(`有效词语不足${CUSTOM_LEVEL_PAIR_COUNT}个（当前：${pairs.length}个），请补充后重试`);
   }
 
   return { pairs, errors, warnings };
@@ -131,7 +131,7 @@ export function CustomTab({ customLevels, onPlay, onDelete, onSave }: Props) {
         >
           <div className="upload-icon">📂</div>
           <div className="upload-text">点击或拖拽上传 .txt 文件</div>
-          <div className="upload-sub">每行一个词语，至少18个，UTF-8 编码</div>
+          <div className="upload-sub">每行一个词语，至少{CUSTOM_LEVEL_PAIR_COUNT}个，UTF-8 编码</div>
         </div>
       ) : (
         <div className="paste-panel">
@@ -143,7 +143,7 @@ export function CustomTab({ customLevels, onPlay, onDelete, onSave }: Props) {
           />
           <textarea
             className="paste-textarea"
-            placeholder={'每行一个词语，至少18个，例如：\n苹果\n香蕉\n天空\n月亮\n…'}
+            placeholder={`每行一个词语，至少${CUSTOM_LEVEL_PAIR_COUNT}个，例如：\n苹果\n香蕉\n天空\n月亮\n…`}
             value={pasteText}
             onChange={e => { setPasteText(e.target.value); setPasteError(''); }}
             rows={8}

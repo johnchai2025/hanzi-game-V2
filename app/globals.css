@@ -827,6 +827,34 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ===== Feedback Toast ===== */
+.pair-success-toast {
+  position: fixed;
+  left: 50%;
+  top: 24px;
+  transform: translateX(-50%);
+  z-index: 180;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border: 2px solid #f7bf54;
+  border-radius: 999px;
+  background: rgba(255, 251, 235, 0.97);
+  box-shadow: 0 8px 24px rgba(160, 90, 20, 0.24);
+  color: #7a3f0b;
+  font-family: var(--font-round);
+  font-size: 1.25rem;
+  pointer-events: none;
+  animation: pair-success-pop 1.2s ease forwards;
+}
+.pair-success-toast strong { color: var(--c-vermilion); font-size: 1.45rem; }
+.pair-success-op { color: #d6a456; font-size: 1rem; }
+@keyframes pair-success-pop {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(0.9); }
+  15%, 78% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-5px) scale(0.98); }
+}
+
 .feedback-toast {
   position: fixed;
   bottom: 100px;
@@ -842,6 +870,33 @@ a { color: inherit; text-decoration: none; }
   backdrop-filter: blur(4px);
   animation: toast-in 0.2s ease;
 }
+
+/* ===== First-game tutorial ===== */
+.game-tutorial {
+  width: min(430px, 90vw);
+  padding: 28px;
+  border-radius: 24px;
+  background: var(--c-paper-card);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  text-align: center;
+  color: var(--c-ink-soft);
+  animation: modal-pop 0.25s cubic-bezier(0.34,1.56,0.64,1);
+}
+.game-tutorial h2 { margin: 14px 0 8px; font-family: var(--font-round); color: #5a3518; }
+.game-tutorial p { line-height: 1.65; }
+.game-tutorial-tip { margin: 10px 0 20px; color: #9a6a3a; font-size: 0.92rem; }
+.game-tutorial-demo { display: flex; align-items: center; justify-content: center; gap: 9px; }
+.game-tutorial-demo span,
+.game-tutorial-demo strong {
+  min-width: 54px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #fff7d6, #ffd778);
+  box-shadow: 0 3px 0 rgba(180,80,20,0.2);
+  font-size: 1.5rem;
+}
+.game-tutorial-demo strong { min-width: 82px; color: var(--c-vermilion); }
+.game-tutorial-demo b { color: #c58a3b; }
 
 @keyframes toast-in {
   from { opacity: 0; transform: translateX(-50%) translateY(8px); }
@@ -2529,4 +2584,3 @@ a { color: inherit; text-decoration: none; }
 .app-content .story-screen {
   max-width: none; min-height: 0; flex: 1; padding: 0; margin: 0;
 }
-

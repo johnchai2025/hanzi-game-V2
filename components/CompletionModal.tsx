@@ -10,9 +10,10 @@ interface Props {
   onWordBook?: () => void;
   newCardCount?: number;
   character?: AnimalCharacter;
+  stars: number;
 }
 
-export function CompletionModal({ onNextLevel, onRestart, onSelectLevel, onWordBook, newCardCount = 0, character }: Props) {
+export function CompletionModal({ onNextLevel, onRestart, onSelectLevel, onWordBook, newCardCount = 0, character, stars }: Props) {
   return (
     <div className="modal-overlay">
       <div className="confetti-wrap" aria-hidden="true">
@@ -24,7 +25,7 @@ export function CompletionModal({ onNextLevel, onRestart, onSelectLevel, onWordB
         <div className="cmp-burst">
           <MascotImg animal={character?.animal} pose="cheer" emoji="🐰" />
         </div>
-        <div className="cmp-stars">⭐⭐⭐</div>
+        <div className="cmp-stars" aria-label={`获得${stars}颗星`}>{'⭐'.repeat(stars)}</div>
         <div className="cmp-title">太棒了！</div>
         <div className="cmp-sub">全部消除，过关！</div>
         {newCardCount > 0 && (

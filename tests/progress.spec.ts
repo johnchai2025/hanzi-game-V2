@@ -68,3 +68,16 @@ test('normalizes every stored practice record while preserving unrelated save fi
     correctCount: 0, wrongCount: 2, hintCount: 0, correctStreak: 0, lastPracticedAt: 0,
   });
 });
+
+test('normalizes corrupt timestamps while migrating legacy card ownership', () => {
+  const normalized = normalizeSaveData({
+    wordCards: [
+      { id: 'bad-1', word: '负数', chars: ['负', '数'], imageUrl: '', generatedAt: -1, levelId: 'g2s1u1' },
+      { id: 'bad-2', word: '无限', chars: ['无', '限'], imageUrl: '', generatedAt: Number.POSITIVE_INFINITY, levelId: 'g2s1u1' },
+    ],
+  });
+
+  expect(normalized.practiceByLevel.g2s1u1['负数'].lastPracticedAt).toBe(0);
+  expect(normalized.practiceByLevel.g2s1u1['无限'].lastPracticedAt).toBe(0);
+  expect(normalized.practiceByLevel.g2s1u1['负数']).toMatchObject({ correctCount: 1, correctStreak: 1 });
+});

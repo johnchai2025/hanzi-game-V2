@@ -14,8 +14,6 @@ export interface RoundSummaryInput {
   baselineByWord: Readonly<Record<string, WordPractice | undefined>>;
   finalByWord: Readonly<Record<string, WordPractice | undefined>>;
   practicedWords: readonly string[];
-  /** Kept injectable so callers never need to read the wall clock while building a summary. */
-  now: number;
 }
 
 export interface RoundSummary {
@@ -26,8 +24,19 @@ export interface RoundSummary {
 
 function safeCounter(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value)
-    ? Math.max(0, Math.floor(value))
+    ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.floor(value)))
     : 0;
+}
+
+function saturatingAdd(left: number, right: number): number {
+  return Math.min(Number.MAX_SAFE_INTEGER, left + right);
+}
+
+function saturatingMultiply(left: number, right: number): number {
+  if (left === 0 || right === 0) return 0;
+  return left > Number.MAX_SAFE_INTEGER / right
+    ? Number.MAX_SAFE_INTEGER
+    : left * right;
 }
 
 export function normalizeWordPractice(value: unknown): WordPractice {
@@ -64,8 +73,8 @@ export function applyPracticeEvent(
     if (event.type === 'correct') {
       result[word] = {
         ...previous,
-        correctCount: previous.correctCount + 1,
-        correctStreak: previous.correctStreak + 1,
+        correctCount: saturatingAdd(previous.correctCount, 1),
+        correctStreak: saturatingAdd(previous.correctStreak, 1),
         lastPracticedAt: timestamp,
       };
       return;
@@ -73,8 +82,8 @@ export function applyPracticeEvent(
 
     result[word] = {
       ...previous,
-      wrongCount: previous.wrongCount + (event.type === 'wrong' ? 1 : 0),
-      hintCount: previous.hintCount + (event.type === 'hint' ? 1 : 0),
+      wrongCount: saturatingAdd(previous.wrongCount, event.type === 'wrong' ? 1 : 0),
+      hintCount: saturatingAdd(previous.hintCount, event.type === 'hint' ? 1 : 0),
       correctStreak: 0,
       lastPracticedAt: timestamp,
     };
@@ -115,16 +124,15 @@ export function reviewPriority(practice: WordPractice | undefined, now: number):
   const overdueDays = Math.min(30, Math.max(0,
     wholeDaysSince(normalized.lastPracticedAt, now) - 6,
   ));
-  return streakNeed
-    + normalized.wrongCount * 30
-    + normalized.hintCount * 20
-    + overdueDays * 5;
+  return [
+    streakNeed,
+    saturatingMultiply(normalized.wrongCount, 30),
+    saturatingMultiply(normalized.hintCount, 20),
+    overdueDays * 5,
+  ].reduce(saturatingAdd, 0);
 }
 
 export function summarizeRound(input: RoundSummaryInput): RoundSummary {
-  // Reading time belongs to the caller; keeping it in the input makes this helper deterministic
-  // and leaves room for time-derived summary labels without changing its public shape.
-  void input.now;
   const words = [...new Set(input.practicedWords.filter(Boolean))];
   let becameFamiliarCount = 0;
   let revisitCount = 0;

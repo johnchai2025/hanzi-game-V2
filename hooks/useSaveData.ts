@@ -41,13 +41,10 @@ export function normalizeSaveData(parsed: Partial<SaveData> | null | undefined):
     if (!card.levelId) return;
     const levelPractice = { ...(practiceByLevel[card.levelId] || {}) };
     if (!levelPractice[card.word]) {
-      levelPractice[card.word] = {
+      levelPractice[card.word] = normalizeWordPractice({
         correctCount: 1,
-        wrongCount: 0,
-        hintCount: 0,
-        correctStreak: 1,
         lastPracticedAt: card.generatedAt || Date.now(),
-      };
+      });
     }
     practiceByLevel[card.levelId] = levelPractice;
   });

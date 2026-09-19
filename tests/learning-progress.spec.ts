@@ -39,6 +39,19 @@ test('normalizes legacy, absent, negative, and corrupt practice fields', () => {
     correctStreak: 0,
     lastPracticedAt: 0,
   });
+  expect(normalizeWordPractice({
+    correctCount: Number.MAX_VALUE,
+    wrongCount: Number.MAX_VALUE,
+    hintCount: Number.MAX_VALUE,
+    correctStreak: Number.MAX_VALUE,
+    lastPracticedAt: Number.MAX_VALUE,
+  })).toEqual({
+    correctCount: Number.MAX_SAFE_INTEGER,
+    wrongCount: Number.MAX_SAFE_INTEGER,
+    hintCount: Number.MAX_SAFE_INTEGER,
+    correctStreak: Number.MAX_SAFE_INTEGER,
+    lastPracticedAt: Number.MAX_SAFE_INTEGER,
+  });
 });
 
 test('applies correct, wrong, and hint events with one update per distinct word', () => {
@@ -63,6 +76,22 @@ test('applies correct, wrong, and hint events with one update per distinct word'
     lastPracticedAt: NOW + 2,
   });
   expect(baseline['洗手'].correctCount).toBe(1);
+});
+
+test('saturates counter increments and priority at a finite safe integer', () => {
+  const maximum = normalizeWordPractice({
+    correctCount: Number.MAX_SAFE_INTEGER,
+    wrongCount: Number.MAX_SAFE_INTEGER,
+    hintCount: Number.MAX_SAFE_INTEGER,
+    correctStreak: Number.MAX_SAFE_INTEGER,
+    lastPracticedAt: NOW,
+  });
+  const updated = applyPracticeEvent({ 极限: maximum }, { type: 'correct', words: ['极限'] }, NOW);
+
+  expect(updated['极限'].correctCount).toBe(Number.MAX_SAFE_INTEGER);
+  expect(updated['极限'].correctStreak).toBe(Number.MAX_SAFE_INTEGER);
+  expect(reviewPriority(maximum, NOW)).toBe(Number.MAX_SAFE_INTEGER);
+  expect(Number.isSafeInteger(reviewPriority(maximum, NOW))).toBe(true);
 });
 
 test('derives learning status, seven-day due boundary, and exact priority', () => {
@@ -102,6 +131,5 @@ test('summarizes distinct practiced words and learning transitions without mutat
     baselineByWord: baseline,
     finalByWord: final,
     practicedWords: ['洗手', '高山', '洗手', '白云'],
-    now: NOW,
   })).toEqual({ practicedCount: 3, becameFamiliarCount: 1, revisitCount: 1 });
 });

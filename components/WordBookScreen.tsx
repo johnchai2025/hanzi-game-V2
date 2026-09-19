@@ -45,6 +45,12 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
     }
   });
   const allPracticedWords = [...uniquePracticeByWord.values()];
+  const canonicalEntriesByLevel = new Map<string, typeof allPracticedWords>();
+  allPracticedWords.forEach(entry => {
+    const entries = canonicalEntriesByLevel.get(entry.levelId) || [];
+    entries.push(entry);
+    canonicalEntriesByLevel.set(entry.levelId, entries);
+  });
   const filterCounts = {
     all: allPracticedWords.length,
     support: allPracticedWords.filter(({ practice }) => {
@@ -54,10 +60,10 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
     familiar: allPracticedWords.filter(({ practice }) => getLearningStatus(normalizeWordPractice(practice)) === 'familiar').length,
   };
   const practicedCustomLevels = customLevels.filter(level =>
-    Object.values(practiceByLevel[level.id] || {}).some(isActuallyPracticed)
+    (canonicalEntriesByLevel.get(level.id)?.length || 0) > 0
   );
   const knownLevelIds = new Set([...levels.map(level => level.id), ...customLevels.map(level => level.id)]);
-  const orphanEntries = practicedEntries.filter(entry => !knownLevelIds.has(entry.levelId) && matchesLearningFilter(entry.practice));
+  const orphanEntries = allPracticedWords.filter(entry => !knownLevelIds.has(entry.levelId) && matchesLearningFilter(entry.practice));
   const totalWords = filterCounts.all;
 
   const totalCards = saveData.wordCards?.length || 0;
@@ -166,12 +172,10 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
 
           <div className="wordbook-sections">
             {levels.map((level, index) => {
-              const levelPractice = practiceByLevel[level.id] || {};
-              const allLevelPracticedWords = Object.entries(levelPractice)
-                .filter(([, practice]) => isActuallyPracticed(practice));
+              const allLevelPracticedWords = canonicalEntriesByLevel.get(level.id) || [];
               const practicedWords = allLevelPracticedWords
-                .filter(([, practice]) => matchesLearningFilter(practice))
-                .map(([word]) => word);
+                .filter(({ practice }) => matchesLearningFilter(practice))
+                .map(({ word }) => word);
               const isLocked = index !== 0 && !saveData.unlockedLevels.includes(level.id);
               return (
                 <div key={level.id} className={`wordbook-section${isLocked ? ' wordbook-section-locked' : ''}`}>
@@ -212,9 +216,9 @@ export function WordBookScreen({ levels, saveData, customLevels, onStory, onDele
                   <div key={level.id} className="wordbook-custom-group">
                     <div className="wordbook-custom-title">{level.title}</div>
                     <div className="wordbook-chips">
-                      {Object.entries(practiceByLevel[level.id] || {})
-                        .filter(([, practice]) => isActuallyPracticed(practice) && matchesLearningFilter(practice))
-                        .map(([word]) => (
+                      {(canonicalEntriesByLevel.get(level.id) || [])
+                        .filter(({ practice }) => matchesLearningFilter(practice))
+                        .map(({ word }) => (
                         <span key={word} className="word-chip">{word}</span>
                         ))}
                     </div>

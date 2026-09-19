@@ -597,6 +597,39 @@ test('word book filters use encouraging empty states', async ({ page }) => {
   await expect(page.getByRole('status')).toHaveText('再多练几次，熟悉的词语就会来到这里～');
 });
 
+test('word book uses one canonical status for a duplicate word across sources', async ({ page }) => {
+  const duplicateCustomLevel = {
+    id: 'custom-duplicate-source', title: '重复词来源', pairs: [['洗', '手']], createdAt: 1, playCount: 0,
+  };
+  await seed(page, {
+    unlockedLevels: ['g2s1u1'], completedLevels: [], wordCards: [], stories: [],
+    practiceByLevel: {
+      g2s1u1: { 洗手: reviewPractice({ correctStreak: 1 }) },
+      'custom-duplicate-source': { 洗手: reviewPractice({ correctStreak: 3 }) },
+    },
+    levelStars: {},
+  }, true, [duplicateCustomLevel]);
+  await page.goto('/');
+  await page.getByRole('button', { name: /词卡库/ }).click();
+  await page.getByRole('button', { name: /词语本/ }).click();
+
+  const filters = page.getByRole('group', { name: '按学习状态筛选' });
+  await expect(filters.getByRole('button', { name: /全部练过.*1/ })).toBeVisible();
+  await expect(filters.getByRole('button', { name: /待巩固.*0/ })).toBeVisible();
+  await expect(filters.getByRole('button', { name: /已经熟悉.*1/ })).toBeVisible();
+  await expect(page.locator('.wordbook-sections').getByText('洗手', { exact: true })).toHaveCount(1);
+  await expect(page.getByText('重复词来源', { exact: true })).toBeVisible();
+
+  await filters.getByRole('button', { name: /待巩固/ }).click();
+  await expect(page.getByRole('status')).toHaveText('现在没有需要巩固的词语，保持得真棒！');
+  await expect(page.locator('.wordbook-sections').getByText('洗手', { exact: true })).toHaveCount(0);
+
+  await filters.getByRole('button', { name: /已经熟悉/ }).click();
+  await expect(filters.getByRole('button', { name: /已经熟悉/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('status')).toHaveCount(0);
+  await expect(page.locator('.wordbook-sections').getByText('洗手', { exact: true })).toHaveCount(1);
+});
+
 function reviewPractice(overrides: Partial<{
   correctCount: number;
   wrongCount: number;

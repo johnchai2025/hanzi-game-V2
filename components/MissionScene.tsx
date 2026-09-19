@@ -49,7 +49,7 @@ export function MissionScene({
         <p className="mission-copy">{missionCopy}</p>
       </div>
 
-      <div className="mission-stage">
+      <div className={`mission-stage mission-stage-beat-count-${beats.length}`}>
         <div className="mission-sky" aria-hidden="true" />
         <div className="mission-cloud mission-cloud-left" aria-hidden="true" />
         <div className="mission-cloud mission-cloud-right" aria-hidden="true" />

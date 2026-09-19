@@ -2637,6 +2637,19 @@ a { color: inherit; text-decoration: none; }
 .mission-beat-7 { left: 38%; top: 32px; }
 .mission-beat-8 { right: 20%; top: 4px; }
 
+/* Eight beats need their own compact arrangement at the 272px stage minimum.
+   The lower center remains reserved for the integrated mascot. */
+.mission-stage-beat-count-8 .mission-beat { width: 64px; }
+.mission-stage-beat-count-8 .mission-beat-label { font-size: 0.6rem; }
+.mission-stage-beat-count-8 .mission-beat-1 { left: 1%; top: 7px; }
+.mission-stage-beat-count-8 .mission-beat-2 { left: 25%; top: 7px; right: auto; }
+.mission-stage-beat-count-8 .mission-beat-3 { left: 50%; top: 7px; }
+.mission-stage-beat-count-8 .mission-beat-4 { right: 1%; top: 7px; }
+.mission-stage-beat-count-8 .mission-beat-5 { left: 7%; top: 83px; bottom: auto; }
+.mission-stage-beat-count-8 .mission-beat-6 { right: 7%; top: 83px; bottom: auto; }
+.mission-stage-beat-count-8 .mission-beat-7 { left: 7%; top: auto; bottom: 10px; }
+.mission-stage-beat-count-8 .mission-beat-8 { right: 7%; top: auto; bottom: 10px; }
+
 .mission-mascot { align-items: center; background: rgba(255, 251, 240, 0.82); border-radius: 14px; bottom: 12px; box-shadow: 0 3px 9px rgba(113, 77, 32, 0.16); display: flex; flex-direction: column; font-family: var(--font-round); font-size: 0.67rem; font-weight: 700; gap: 1px; left: 50%; padding: 3px; position: absolute; transform: translateX(-50%); z-index: 7; }
 .mission-mascot .mascot-img { height: 42px; width: 42px; }
 .mission-progress { align-items: center; background: var(--c-paper); border-radius: 999px; color: var(--c-ink-soft); display: flex; font-family: var(--font-round); font-size: 0.82rem; font-weight: 700; justify-content: space-between; margin-top: 10px; padding: 7px 11px; }

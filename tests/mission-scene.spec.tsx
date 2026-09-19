@@ -77,6 +77,7 @@ test('renders all eight custom beats at zero progress using its supplied mission
   expect(restoredBeatCount(markup)).toBe(0);
   expect(markup).toContain('我的词语乐园');
   expect(markup).toContain('团团和你一起，把词语星光一颗颗点亮吧！');
+  expect(markup).toContain('class="mission-stage mission-stage-beat-count-8"');
   expect(markup).toContain('0 / 8');
   for (let index = 1; index <= 8; index += 1) {
     expect(markup).toContain(`aria-label="词语星光 ${index}：等待恢复"`);

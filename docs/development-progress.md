@@ -1,5 +1,8 @@
 # 汉字对对碰 v2 — 开发进度总结
 
+> ⚠️ 本文是 2026-05 的历史开发总结，部分玩法、图片策略和功能状态已经过时。
+> 当前权威进度请查看 [`project-progress.md`](./project-progress.md)，后续优化路线请查看 [`game-optimization-roadmap.md`](./game-optimization-roadmap.md)。
+
 > 文档日期：2026-05-23  
 > 项目路径：`hanzi-game`  
 > 完整产品规划见 [`plan.md`](./plan.md)；设计参考见 [`game-design-framework.md`](./game-design-framework.md)
